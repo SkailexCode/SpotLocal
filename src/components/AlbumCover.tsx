@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Disc3 } from 'lucide-react';
 
 interface AlbumCoverProps {
@@ -24,15 +24,27 @@ function pickGradient(label: string): string {
   return FALLBACK_GRADIENTS[Math.abs(hash) % FALLBACK_GRADIENTS.length];
 }
 
-export function AlbumCover({
+export function resolvePublicAssetUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('/covers/')) {
+    const base = import.meta.env.BASE_URL || '/';
+    const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+    return `${normalizedBase}${url.slice(1)}`;
+  }
+  return url;
+}
+
+export const AlbumCover = memo(function AlbumCover({
   src,
   alt,
   sizeClass = 'w-10 h-10',
   roundedClass = 'rounded-[4px]',
 }: AlbumCoverProps) {
-  const [failed, setFailed] = useState(false);
+  const resolvedSrc = resolvePublicAssetUrl(src);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = Boolean(resolvedSrc && failedSrc === resolvedSrc);
 
-  if (!src || failed) {
+  if (!resolvedSrc || failed) {
     return (
       <div
         className={`${sizeClass} ${roundedClass} bg-gradient-to-br ${pickGradient(alt)} flex items-center justify-center shrink-0 border border-white/10`}
@@ -45,12 +57,13 @@ export function AlbumCover({
 
   return (
     <img
-      src={src}
+      src={resolvedSrc}
       alt={alt}
       referrerPolicy="no-referrer"
       loading="lazy"
-      onError={() => setFailed(true)}
+      decoding="async"
+      onError={() => setFailedSrc(resolvedSrc)}
       className={`${sizeClass} ${roundedClass} object-cover shrink-0 bg-[#282828]`}
     />
   );
-}
+});

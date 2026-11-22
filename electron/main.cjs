@@ -79,6 +79,7 @@ function startLocalServer(port, musicDir) {
       ELECTRON_RUN_AS_NODE: '1',
       NODE_ENV: 'production',
       PORT: String(port),
+      SPOTLOCAL_DESKTOP: '1',
       SPOTLOCAL_APP_ROOT: appRoot,
       SPOTLOCAL_MUSIC_DIR: musicDir,
     },

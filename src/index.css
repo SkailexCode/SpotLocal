@@ -27,6 +27,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Skips layout & paint work for off-screen rows in long playlists */
+.track-row-contain {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 56px;
+}
+
 input[type="search"]::-webkit-search-cancel-button {
   -webkit-appearance: none;
   appearance: none;

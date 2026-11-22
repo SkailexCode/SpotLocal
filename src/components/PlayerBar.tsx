@@ -1,6 +1,11 @@
+import { useState } from 'react';
 import {
   Check,
+  HardDrive,
+  Link2,
   ListMusic,
+  Loader2,
+  Moon,
   Pause,
   Play,
   Plus,
@@ -9,185 +14,227 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  Tv,
+  Volume1,
   Volume2,
   VolumeX,
   Youtube,
-  ExternalLink,
 } from 'lucide-react';
-import type { RepeatMode, Track } from '../types/music';
-import { formatTime, getTrackYouTubeWatchUrl } from '../utils/musicLogic';
+import type {
+  AudioSourceKind,
+  RepeatMode,
+  SleepTimerOption,
+  Track,
+} from '../types/music';
+import { formatTime } from '../utils/musicLogic';
 import { AlbumCover } from './AlbumCover';
+import type { VideoDisplayMode } from './YouTubePlayerHost';
 
 interface PlayerBarProps {
   currentTrack: Track | null;
   isPlaying: boolean;
-  currentTime: number;
-  duration: number;
+  isLoadingAudio: boolean;
+  isShuffle: boolean;
+  repeatMode: RepeatMode;
+  currentTimeSec: number;
+  durationSec: number;
   volume: number;
-  muted: boolean;
-  shuffle: boolean;
-  repeat: RepeatMode;
-  queueOpen: boolean;
-  audioError: string | null;
-  youtubeActive?: boolean;
-  activeVideoId?: string | null;
-  onTogglePlayPause: () => void;
-  onPrevious: () => void;
+  isMuted: boolean;
+  showQueuePanel: boolean;
+  activeAudioSource: AudioSourceKind;
+  videoDisplayMode: VideoDisplayMode;
+  sleepTimerRemainingMin: number | null;
+  activeSleepOption: SleepTimerOption;
+  onTogglePlay: () => void;
+  onPrev: () => void;
   onNext: () => void;
-  onSeek: (timeSec: number) => void;
-  onVolumeChange: (vol: number) => void;
-  onToggleMute: () => void;
   onToggleShuffle: () => void;
   onCycleRepeat: () => void;
+  onSeek: (newTimeSec: number) => void;
+  onVolumeChange: (newVol: number) => void;
+  onToggleMute: () => void;
   onToggleLike: (trackId: string) => void;
-  onToggleQueue: () => void;
+  onToggleQueuePanel: () => void;
+  onToggleVideoMode: () => void;
+  onAttachYouTubeLink: (track: Track) => void;
+  onSelectSleepTimer: (opt: SleepTimerOption) => void;
+  onSelectArtist?: (artistName: string) => void;
 }
+
+const SLEEP_OPTIONS: Array<{ value: SleepTimerOption; label: string }> = [
+  { value: 0, label: 'Désactivée' },
+  { value: 15, label: 'Dans 15 minutes' },
+  { value: 30, label: 'Dans 30 minutes' },
+  { value: 45, label: 'Dans 45 minutes' },
+  { value: 60, label: 'Dans 1 heure' },
+  { value: 'end-of-track', label: 'À la fin du titre' },
+];
 
 export function PlayerBar({
   currentTrack,
   isPlaying,
-  currentTime,
-  duration,
+  isLoadingAudio,
+  isShuffle,
+  repeatMode,
+  currentTimeSec,
+  durationSec,
   volume,
-  muted,
-  shuffle,
-  repeat,
-  queueOpen,
-  audioError,
-  youtubeActive = false,
-  activeVideoId = null,
-  onTogglePlayPause,
-  onPrevious,
+  isMuted,
+  showQueuePanel,
+  activeAudioSource,
+  videoDisplayMode,
+  sleepTimerRemainingMin,
+  activeSleepOption,
+  onTogglePlay,
+  onPrev,
   onNext,
+  onToggleShuffle,
+  onCycleRepeat,
   onSeek,
   onVolumeChange,
   onToggleMute,
-  onToggleShuffle,
-  onCycleRepeat,
   onToggleLike,
-  onToggleQueue,
+  onToggleQueuePanel,
+  onToggleVideoMode,
+  onAttachYouTubeLink,
+  onSelectSleepTimer,
+  onSelectArtist,
 }: PlayerBarProps) {
-  const effectiveDuration = duration > 0 ? duration : currentTrack?.durationSec || 30;
-  const progressPct = Math.min(
-    100,
-    Math.max(0, effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0)
-  );
-  const ytWatchUrl =
-    currentTrack && youtubeActive ? getTrackYouTubeWatchUrl(currentTrack, activeVideoId) : null;
+  const [sleepMenuOpen, setSleepMenuOpen] = useState(false);
+
+  const effectiveDuration =
+    durationSec > 0 ? durationSec : currentTrack?.durationSec || 0;
+  const progressPercent =
+    effectiveDuration > 0
+      ? Math.min(100, (currentTimeSec / effectiveDuration) * 100)
+      : 0;
+  const effectiveVolume = isMuted ? 0 : volume;
+
+  const VolumeIcon =
+    effectiveVolume === 0
+      ? VolumeX
+      : effectiveVolume < 0.5
+      ? Volume1
+      : Volume2;
 
   return (
-    <footer
-      aria-label="Lecteur audio"
-      className="relative h-[74px] sm:h-[86px] bg-black px-3 sm:px-4 flex items-center justify-between gap-3 sm:gap-4 shrink-0 select-none border-t border-white/[0.06] sm:border-t-0"
-    >
-      {/* Mobile thin top progress bar */}
-      <div className="sm:hidden absolute top-0 left-0 right-0 h-[2px] bg-[#2a2a2a]">
-        <div
-          className="h-full bg-[#1ED760]"
-          style={{ width: `${progressPct}%` }}
-        />
-      </div>
-
+    <footer className="h-[88px] px-3 sm:px-4 bg-black border-t border-white/[0.08] grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)_auto] sm:grid-cols-3 items-center gap-2 sm:gap-4 shrink-0 select-none z-20">
       {/* Left: Now Playing Info */}
-      <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-none sm:w-[30%] sm:max-w-[340px]">
+      <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
         {currentTrack ? (
           <>
             <AlbumCover
               src={currentTrack.coverUrl}
-              alt={currentTrack.title}
+              alt={currentTrack.album}
               sizeClass="w-12 h-12 sm:w-14 sm:h-14"
-              roundedClass="rounded-[4px]"
+              roundedClass="rounded-[4px] shadow-md"
             />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <div className="flex items-center gap-1.5 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
+                <p
+                  data-testid="now-playing-title"
+                  className="text-xs sm:text-sm font-medium text-white truncate"
+                >
                   {currentTrack.title}
                 </p>
-                {youtubeActive && ytWatchUrl && (
-                  <a
-                    href={ytWatchUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Ouvrir la vidéo officielle sur YouTube"
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-red-600/20 text-red-400 hover:text-white hover:bg-red-600/40 text-[10px] font-semibold transition-colors shrink-0"
+              </div>
+              <div className="flex items-center gap-2 min-w-0 mt-0.5">
+                {onSelectArtist ? (
+                  <button
+                    type="button"
+                    onClick={() => onSelectArtist(currentTrack.artist)}
+                    className="text-[11px] sm:text-xs text-[#b3b3b3] hover:text-white hover:underline truncate text-left cursor-pointer"
+                  >
+                    {currentTrack.artist}
+                  </button>
+                ) : (
+                  <p className="text-[11px] sm:text-xs text-[#b3b3b3] truncate">
+                    {currentTrack.artist}
+                  </p>
+                )}
+
+                {(activeAudioSource === 'local-idb' ||
+                  activeAudioSource === 'local-folder') && (
+                  <span
+                    title="Lecture intégrale depuis votre fichier MP3"
+                    className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#1ED760]/15 text-[#1ED760] text-[10px] font-bold shrink-0"
+                  >
+                    <HardDrive className="w-2.5 h-2.5" />
+                    MP3
+                  </span>
+                )}
+                {activeAudioSource === 'youtube' && (
+                  <button
+                    type="button"
+                    onClick={onToggleVideoMode}
+                    title="Cliquer pour afficher/masquer le clip YouTube"
+                    className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[10px] font-bold shrink-0 cursor-pointer"
                   >
                     <Youtube className="w-2.5 h-2.5 fill-current" />
-                    <span>YouTube</span>
-                    <ExternalLink className="w-2 h-2 opacity-80" />
-                  </a>
+                    YT
+                  </button>
+                )}
+                {(activeAudioSource === 'deezer' ||
+                  activeAudioSource === 'itunes' ||
+                  activeAudioSource === 'stream') && (
+                  <button
+                    type="button"
+                    onClick={() => onAttachYouTubeLink(currentTrack)}
+                    title="Extrait 30s — Cliquez pour associer un lien YouTube intégral"
+                    className={`hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 cursor-pointer ${
+                      activeAudioSource === 'deezer'
+                        ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300'
+                        : activeAudioSource === 'itunes'
+                          ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300'
+                          : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
+                    }`}
+                  >
+                    <Link2 className="w-2.5 h-2.5" />
+                    {activeAudioSource === 'deezer'
+                      ? 'Deezer · Lier YT'
+                      : activeAudioSource === 'itunes'
+                        ? 'Apple · Lier YT'
+                        : '30s · Lier YT'}
+                  </button>
                 )}
               </div>
-              <p className="text-xs text-[#b3b3b3] truncate">
-                {currentTrack.artist}
-              </p>
-              {audioError && (
-                <p className="text-[11px] text-amber-400 truncate">{audioError}</p>
-              )}
             </div>
             <button
               type="button"
               onClick={() => onToggleLike(currentTrack.id)}
               aria-label={
                 currentTrack.liked
-                  ? `Retirer ${currentTrack.title} des titres likés`
-                  : `Aimer ${currentTrack.title}`
+                  ? 'Retirer des titres likés'
+                  : 'Ajouter aux titres likés'
               }
-              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+              className={`ml-0.5 shrink-0 transition-colors cursor-pointer ${
                 currentTrack.liked
-                  ? 'bg-[#1ED760] text-black'
-                  : 'border border-[#b3b3b3]/70 text-[#b3b3b3] hover:border-white hover:text-white'
+                  ? 'text-[#1ED760]'
+                  : 'text-[#b3b3b3] hover:text-white'
               }`}
             >
               {currentTrack.liked ? (
-                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                <Check className="w-4 h-4 stroke-[2.75] bg-[#1ED760] text-black rounded-full p-0.5" />
               ) : (
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <Plus className="w-4 h-4" />
               )}
             </button>
           </>
         ) : (
-          <div className="text-xs text-[#9a9a9a] truncate">
-            Sélectionnez un titre pour lancer la lecture
-          </div>
+          <p className="text-xs text-[#b3b3b3]">Sélectionnez un titre</p>
         )}
       </div>
 
-      {/* Mobile compact transport controls */}
-      <div className="flex sm:hidden items-center gap-2 shrink-0">
-        <button
-          type="button"
-          onClick={onTogglePlayPause}
-          disabled={!currentTrack}
-          aria-label={isPlaying ? 'Pause' : 'Lecture'}
-          className="w-9 h-9 rounded-full bg-white disabled:opacity-40 text-black flex items-center justify-center cursor-pointer"
-        >
-          {isPlaying ? (
-            <Pause className="w-4 h-4 fill-black" />
-          ) : (
-            <Play className="w-4 h-4 fill-black ml-0.5" />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!currentTrack}
-          aria-label="Titre suivant"
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white disabled:opacity-40 cursor-pointer"
-        >
-          <SkipForward className="w-5 h-5 fill-current" />
-        </button>
-      </div>
-
-      {/* Desktop Center: Transport Controls + Seek Bar */}
-      <div className="hidden sm:flex flex-col items-center gap-1.5 flex-1 max-w-[600px]">
-        <div className="flex items-center gap-4 sm:gap-5">
+      {/* Center: Transport + Progress */}
+      <div className="flex flex-col items-center justify-center max-w-[620px] w-full mx-auto gap-1.5">
+        <div className="flex items-center gap-3 sm:gap-5">
           <button
             type="button"
             onClick={onToggleShuffle}
             aria-label="Lecture aléatoire"
-            title="Lecture aléatoire"
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-              shuffle ? 'text-[#1ED760]' : 'text-[#b3b3b3] hover:text-white'
+            title="Lecture aléatoire (S)"
+            className={`hidden sm:inline-flex relative transition-colors cursor-pointer ${
+              isShuffle ? 'text-[#1ED760]' : 'text-[#b3b3b3] hover:text-white'
             }`}
           >
             <Shuffle className="w-4 h-4" />
@@ -195,22 +242,25 @@ export function PlayerBar({
 
           <button
             type="button"
-            onClick={onPrevious}
+            onClick={onPrev}
             disabled={!currentTrack}
             aria-label="Titre précédent"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white disabled:opacity-40 transition-colors cursor-pointer"
+            className="text-[#b3b3b3] hover:text-white disabled:opacity-40 transition-colors cursor-pointer"
           >
-            <SkipBack className="w-5 h-5 fill-current" />
+            <SkipBack className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
           </button>
 
           <button
             type="button"
-            onClick={onTogglePlayPause}
+            onClick={onTogglePlay}
             disabled={!currentTrack}
             aria-label={isPlaying ? 'Pause' : 'Lecture'}
-            className="w-9 h-9 rounded-full bg-white hover:scale-105 active:scale-95 disabled:opacity-40 text-black flex items-center justify-center transition-transform cursor-pointer"
+            data-testid="player-play-toggle"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white hover:scale-105 active:scale-95 disabled:opacity-40 text-black flex items-center justify-center transition-transform cursor-pointer"
           >
-            {isPlaying ? (
+            {isLoadingAudio ? (
+              <Loader2 className="w-4 h-4 animate-spin text-black" />
+            ) : isPlaying ? (
               <Pause className="w-4 h-4 fill-black" />
             ) : (
               <Play className="w-4 h-4 fill-black ml-0.5" />
@@ -222,21 +272,23 @@ export function PlayerBar({
             onClick={onNext}
             disabled={!currentTrack}
             aria-label="Titre suivant"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white disabled:opacity-40 transition-colors cursor-pointer"
+            className="text-[#b3b3b3] hover:text-white disabled:opacity-40 transition-colors cursor-pointer"
           >
-            <SkipForward className="w-5 h-5 fill-current" />
+            <SkipForward className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
           </button>
 
           <button
             type="button"
             onClick={onCycleRepeat}
-            aria-label={`Répétition : ${repeat}`}
-            title="Répéter"
-            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-              repeat !== 'off' ? 'text-[#1ED760]' : 'text-[#b3b3b3] hover:text-white'
+            aria-label="Mode répétition"
+            title="Répétition (R)"
+            className={`hidden sm:inline-flex transition-colors cursor-pointer ${
+              repeatMode !== 'off'
+                ? 'text-[#1ED760]'
+                : 'text-[#b3b3b3] hover:text-white'
             }`}
           >
-            {repeat === 'one' ? (
+            {repeatMode === 'one' ? (
               <Repeat1 className="w-4 h-4" />
             ) : (
               <Repeat className="w-4 h-4" />
@@ -244,79 +296,149 @@ export function PlayerBar({
           </button>
         </div>
 
-        <div className="w-full flex items-center gap-2.5">
-          <span className="text-[11px] text-[#b3b3b3] font-mono-tabular w-9 text-right">
-            {formatTime(currentTime)}
+        {/* Scrubber */}
+        <div className="flex items-center gap-2 w-full">
+          <span className="font-mono-tabular text-[11px] text-[#a7a7a7] w-8 sm:w-9 text-right">
+            {formatTime(currentTimeSec)}
           </span>
-          <div className="relative flex-1 h-3 flex items-center group">
-            <div className="w-full h-1 rounded-full bg-[#4d4d4d] overflow-hidden">
+
+          <div className="group relative flex-1 h-3 flex items-center">
+            <div className="w-full h-1 rounded-full bg-white/25 overflow-hidden">
               <div
                 className="h-full bg-white group-hover:bg-[#1ED760] transition-colors"
-                style={{ width: `${progressPct}%` }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <input
               type="range"
               min={0}
-              max={effectiveDuration}
-              step={0.1}
-              value={Math.min(currentTime, effectiveDuration)}
-              disabled={!currentTrack}
-              onChange={(e) => onSeek(Number(e.target.value))}
+              max={effectiveDuration || 1}
+              step={0.25}
+              value={Math.min(currentTimeSec, effectiveDuration || 1)}
+              disabled={!currentTrack || effectiveDuration === 0}
               aria-label="Position de lecture"
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={(e) => onSeek(Number(e.target.value))}
+              className="absolute inset-0 w-full opacity-0 cursor-pointer disabled:cursor-default"
             />
           </div>
-          <span className="text-[11px] text-[#b3b3b3] font-mono-tabular w-9">
+
+          <span className="font-mono-tabular text-[11px] text-[#a7a7a7] w-8 sm:w-9">
             {formatTime(effectiveDuration)}
           </span>
         </div>
       </div>
 
-      {/* Right: Queue & Volume */}
-      <div className="hidden sm:flex items-center justify-end gap-3 w-[28%] max-w-[280px]">
+      {/* Right: Sleep Timer, Video Mode, Queue & Volume */}
+      <div className="flex items-center justify-end gap-2 sm:gap-2.5">
+        {/* Sleep Timer Popover */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setSleepMenuOpen((prev) => !prev)}
+            aria-label="Minuterie de mise en veille"
+            title="Minuterie de mise en veille"
+            className={`inline-flex items-center gap-1 p-1.5 rounded-md transition-colors cursor-pointer ${
+              activeSleepOption !== 0
+                ? 'text-[#1ED760] bg-[#1ED760]/10'
+                : 'text-[#b3b3b3] hover:text-white'
+            }`}
+          >
+            <Moon className="w-4 h-4" />
+            {sleepTimerRemainingMin !== null && (
+              <span className="hidden xl:inline text-[11px] font-mono-tabular font-semibold">
+                {sleepTimerRemainingMin}m
+              </span>
+            )}
+          </button>
+
+          {sleepMenuOpen && (
+            <div
+              onMouseLeave={() => setSleepMenuOpen(false)}
+              className="absolute right-0 bottom-10 z-40 w-48 rounded-lg bg-[#282828] border border-white/10 shadow-2xl py-1.5 text-xs text-white"
+            >
+              <p className="px-3 py-1 text-[11px] font-semibold text-[#a0a0a0]">
+                Mise en veille
+              </p>
+              {SLEEP_OPTIONS.map((opt) => (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  onClick={() => {
+                    onSelectSleepTimer(opt.value);
+                    setSleepMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-white/10 text-left cursor-pointer"
+                >
+                  <span>{opt.label}</span>
+                  {activeSleepOption === opt.value && (
+                    <Check className="w-3.5 h-3.5 text-[#1ED760]" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Toggle Video Clip (when playing YouTube) */}
+        {activeAudioSource === 'youtube' && (
+          <button
+            type="button"
+            onClick={onToggleVideoMode}
+            aria-label="Afficher ou masquer le clip vidéo"
+            title="Afficher / agrandir le clip vidéo (V)"
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+              videoDisplayMode !== 'hidden'
+                ? 'text-[#1ED760]'
+                : 'text-[#b3b3b3] hover:text-white'
+            }`}
+          >
+            <Tv className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Queue Toggle (works on all viewports now!) */}
         <button
           type="button"
-          onClick={onToggleQueue}
-          aria-label="File d'attente"
+          onClick={onToggleQueuePanel}
+          aria-label="Afficher ou masquer la file d'attente"
           title="File d'attente"
-          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-            queueOpen ? 'text-[#1ED760]' : 'text-[#b3b3b3] hover:text-white'
+          className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+            showQueuePanel
+              ? 'text-[#1ED760]'
+              : 'text-[#b3b3b3] hover:text-white'
           }`}
         >
           <ListMusic className="w-4 h-4" />
         </button>
 
-        <div className="flex items-center gap-2 w-32">
+        {/* Volume (Desktop & Tablet) */}
+        <div className="hidden sm:flex items-center gap-1.5">
           <button
             type="button"
             onClick={onToggleMute}
-            aria-label={muted ? 'Réactiver le son' : 'Couper le son'}
-            className="text-[#b3b3b3] hover:text-white transition-colors cursor-pointer"
+            aria-label={isMuted ? 'Réactiver le son' : 'Couper le son'}
+            title="Muet (M)"
+            className="p-1 text-[#b3b3b3] hover:text-white transition-colors cursor-pointer"
           >
-            {muted || volume === 0 ? (
-              <VolumeX className="w-4 h-4" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
+            <VolumeIcon className="w-4 h-4" />
           </button>
 
-          <div className="relative flex-1 h-3 flex items-center group">
-            <div className="w-full h-1 rounded-full bg-[#4d4d4d] overflow-hidden">
+          <div className="group relative w-20 md:w-24 h-3 flex items-center">
+            <div className="w-full h-1 rounded-full bg-white/25 overflow-hidden">
               <div
                 className="h-full bg-white group-hover:bg-[#1ED760] transition-colors"
-                style={{ width: `${(muted ? 0 : volume) * 100}%` }}
+                style={{ width: `${effectiveVolume * 100}%` }}
               />
             </div>
             <input
               type="range"
               min={0}
               max={1}
-              step={0.02}
-              value={muted ? 0 : volume}
-              onChange={(e) => onVolumeChange(Number(e.target.value))}
+              step={0.01}
+              value={effectiveVolume}
               aria-label="Volume"
-              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              onChange={(e) => onVolumeChange(Number(e.target.value))}
+              className="absolute inset-0 w-full opacity-0 cursor-pointer"
             />
           </div>
         </div>

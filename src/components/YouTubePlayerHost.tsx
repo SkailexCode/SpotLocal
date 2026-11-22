@@ -1,36 +1,12 @@
-import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react';
-
-interface YTPlayerInstance {
-  loadVideoById: (videoId: string) => void;
-  playVideo: () => void;
-  pauseVideo: () => void;
-  stopVideo: () => void;
-  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
-  setVolume: (volume: number) => void;
-  mute: () => void;
-  unMute: () => void;
-  getCurrentTime: () => number;
-  getDuration: () => number;
-  getPlayerState: () => number;
-  destroy: () => void;
-}
+import { useEffect, useRef } from 'react';
+import { Link2, Maximize2, Minimize2, X, Youtube } from 'lucide-react';
 
 declare global {
   interface Window {
     YT?: {
       Player: new (
         element: HTMLElement | string,
-        options: {
-          height?: string | number;
-          width?: string | number;
-          videoId?: string;
-          playerVars?: Record<string, number | string>;
-          events?: {
-            onReady?: () => void;
-            onStateChange?: (event: { data: number }) => void;
-            onError?: (event: { data: number }) => void;
-          };
-        }
+        options: Record<string, unknown>
       ) => YTPlayerInstance;
       PlayerState?: {
         ENDED: number;
@@ -44,252 +20,357 @@ declare global {
   }
 }
 
-export interface YouTubePlayerHandle {
-  loadAndPlay: (videoIds: string[]) => void;
-  play: () => void;
-  pause: () => void;
-  stop: () => void;
-  seekTo: (seconds: number) => void;
-  setVolume: (volume01: number, muted: boolean) => void;
+interface YTPlayerInstance {
+  loadVideoById: (videoId: string, startSeconds?: number) => void;
+  cueVideoById: (videoId: string, startSeconds?: number) => void;
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+  setVolume: (volume: number) => void;
+  getCurrentTime: () => number;
+  getDuration: () => number;
+  getPlayerState: () => number;
+  destroy: () => void;
 }
+
+export type VideoDisplayMode = 'hidden' | 'pip' | 'theater';
 
 interface YouTubePlayerHostProps {
-  visibleInRightPanel: boolean;
+  videoId: string | null;
   active: boolean;
-  onTimeUpdate: (currentTime: number, duration: number) => void;
-  onPlayingStateChange: (playing: boolean) => void;
+  isPlaying: boolean;
+  volumePercent: number;
+  seekRequestSec: number | null;
+  displayMode: VideoDisplayMode;
+  trackTitle?: string;
+  trackArtist?: string;
+  onDisplayModeChange: (mode: VideoDisplayMode) => void;
+  onClosePlayer?: () => void;
+  onChangeYouTubeLink?: () => void;
+  onTimeUpdate: (currentSec: number, durationSec: number) => void;
   onEnded: () => void;
-  onAllCandidatesFailed: () => void;
-  onActiveVideoChange?: (videoId: string) => void;
+  onUnavailable: () => void;
+  onReadyStateChange?: (ready: boolean) => void;
 }
 
-let ytApiPromise: Promise<void> | null = null;
+let ytScriptLoaded = false;
+const readyCallbacks: Array<() => void> = [];
 
-function ensureYouTubeApi(): Promise<void> {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if (window.YT && window.YT.Player) return Promise.resolve();
-  if (ytApiPromise) return ytApiPromise;
-
-  ytApiPromise = new Promise((resolve) => {
-    const prevCallback = window.onYouTubeIframeAPIReady;
+function ensureYouTubeIframeApi(cb: () => void) {
+  if (window.YT && window.YT.Player) {
+    cb();
+    return;
+  }
+  readyCallbacks.push(cb);
+  if (!ytScriptLoaded) {
+    ytScriptLoaded = true;
+    const prev = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
-      if (prevCallback) prevCallback();
-      resolve();
+      if (prev) prev();
+      while (readyCallbacks.length > 0) {
+        const fn = readyCallbacks.shift();
+        fn?.();
+      }
     };
-    const existing = document.querySelector(
-      'script[src="https://www.youtube.com/iframe_api"]'
-    );
-    if (!existing) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      document.head.appendChild(tag);
-    }
-  });
-  return ytApiPromise;
+    const script = document.createElement('script');
+    script.src = 'https://www.youtube.com/iframe_api';
+    script.async = true;
+    document.head.appendChild(script);
+  }
 }
 
-export const YouTubePlayerHost = forwardRef<YouTubePlayerHandle, YouTubePlayerHostProps>(
-  function YouTubePlayerHost(
-    {
-      visibleInRightPanel,
-      active,
-      onTimeUpdate,
-      onPlayingStateChange,
-      onEnded,
-      onAllCandidatesFailed,
-      onActiveVideoChange,
-    },
-    ref
-  ) {
-    const mountRef = useRef<HTMLDivElement | null>(null);
-    const playerRef = useRef<YTPlayerInstance | null>(null);
-    const readyRef = useRef(false);
-    const pendingVideoIdsRef = useRef<string[] | null>(null);
-    const candidatesRef = useRef<string[]>([]);
-    const candidateIndexRef = useRef(0);
-    const activeRef = useRef(active);
-    activeRef.current = active;
+export function YouTubePlayerHost({
+  videoId,
+  active,
+  isPlaying,
+  volumePercent,
+  seekRequestSec,
+  displayMode,
+  trackTitle,
+  trackArtist,
+  onDisplayModeChange,
+  onClosePlayer,
+  onChangeYouTubeLink,
+  onTimeUpdate,
+  onEnded,
+  onUnavailable,
+  onReadyStateChange,
+}: YouTubePlayerHostProps) {
+  const mountNodeRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<YTPlayerInstance | null>(null);
+  const playerReadyRef = useRef(false);
+  const loadedVideoIdRef = useRef<string | null>(null);
 
-    const callbacksRef = useRef({
-      onTimeUpdate,
-      onPlayingStateChange,
-      onEnded,
-      onAllCandidatesFailed,
-      onActiveVideoChange,
-    });
-    callbacksRef.current = {
-      onTimeUpdate,
-      onPlayingStateChange,
-      onEnded,
-      onAllCandidatesFailed,
-      onActiveVideoChange,
-    };
+  const stateCallbacksRef = useRef({
+    onTimeUpdate,
+    onEnded,
+    onUnavailable,
+    onReadyStateChange,
+    active,
+    isPlaying,
+    volumePercent,
+    videoId,
+  });
+  stateCallbacksRef.current = {
+    onTimeUpdate,
+    onEnded,
+    onUnavailable,
+    onReadyStateChange,
+    active,
+    isPlaying,
+    volumePercent,
+    videoId,
+  };
 
-    const loadCandidateAt = (idx: number) => {
-      const id = candidatesRef.current[idx];
-      if (!id) {
-        callbacksRef.current.onAllCandidatesFailed();
-        return;
-      }
-      candidateIndexRef.current = idx;
-      callbacksRef.current.onActiveVideoChange?.(id);
-      if (playerRef.current && readyRef.current) {
-        playerRef.current.loadVideoById(id);
-      } else {
-        pendingVideoIdsRef.current = candidatesRef.current.slice(idx);
-      }
-    };
+  // Initialize single persistent YT.Player instance (never reparented in DOM)
+  useEffect(() => {
+    let cancelled = false;
 
-    useEffect(() => {
-      let cancelled = false;
-      void ensureYouTubeApi().then(() => {
-        if (cancelled || !mountRef.current || !window.YT?.Player) return;
-        const container = document.createElement('div');
-        mountRef.current.innerHTML = '';
-        mountRef.current.appendChild(container);
+    ensureYouTubeIframeApi(() => {
+      if (cancelled || !mountNodeRef.current || !window.YT?.Player) return;
 
-        playerRef.current = new window.YT.Player(container, {
-          width: '100%',
-          height: '100%',
-          playerVars: {
-            autoplay: 0,
-            controls: 1,
-            rel: 0,
-            modestbranding: 1,
-            playsinline: 1,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: () => {
-              readyRef.current = true;
-              if (pendingVideoIdsRef.current && pendingVideoIdsRef.current.length > 0) {
-                candidatesRef.current = pendingVideoIdsRef.current;
-                pendingVideoIdsRef.current = null;
-                loadCandidateAt(0);
-              }
-            },
-            onStateChange: (event) => {
-              if (!activeRef.current) return;
-              const state = event.data;
-              if (state === 1) {
-                callbacksRef.current.onPlayingStateChange(true);
-                const dur = playerRef.current?.getDuration() || 0;
-                const cur = playerRef.current?.getCurrentTime() || 0;
-                if (dur > 0) callbacksRef.current.onTimeUpdate(cur, dur);
-              } else if (state === 2) {
-                callbacksRef.current.onPlayingStateChange(false);
-              } else if (state === 0) {
-                callbacksRef.current.onEnded();
-              }
-            },
-            onError: () => {
-              if (!activeRef.current) return;
-              const nextIdx = candidateIndexRef.current + 1;
-              if (nextIdx < candidatesRef.current.length) {
-                loadCandidateAt(nextIdx);
+      const innerDiv = document.createElement('div');
+      mountNodeRef.current.innerHTML = '';
+      mountNodeRef.current.appendChild(innerDiv);
+
+      playerRef.current = new window.YT.Player(innerDiv, {
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+          disablekb: 1,
+          fs: 1,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          playsinline: 1,
+          rel: 0,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: () => {
+            if (cancelled) return;
+            playerReadyRef.current = true;
+            stateCallbacksRef.current.onReadyStateChange?.(true);
+            playerRef.current?.setVolume(stateCallbacksRef.current.volumePercent);
+
+            const initialVid = stateCallbacksRef.current.videoId;
+            if (initialVid && stateCallbacksRef.current.active) {
+              loadedVideoIdRef.current = initialVid;
+              if (stateCallbacksRef.current.isPlaying) {
+                playerRef.current?.loadVideoById(initialVid, 0);
               } else {
-                callbacksRef.current.onAllCandidatesFailed();
+                playerRef.current?.cueVideoById(initialVid, 0);
               }
-            },
+            }
           },
-        });
+          onStateChange: (event: { data: number }) => {
+            if (!stateCallbacksRef.current.active) return;
+            if (event.data === 0) {
+              stateCallbacksRef.current.onEnded();
+            }
+          },
+          onError: () => {
+            if (!stateCallbacksRef.current.active) return;
+            stateCallbacksRef.current.onUnavailable();
+          },
+        },
       });
+    });
 
-      const pollTimer = window.setInterval(() => {
-        if (!activeRef.current || !playerRef.current || !readyRef.current) return;
-        try {
-          const state = playerRef.current.getPlayerState();
-          if (state === 1 || state === 2) {
-            const cur = playerRef.current.getCurrentTime() || 0;
-            const dur = playerRef.current.getDuration() || 0;
-            if (dur > 0) {
-              callbacksRef.current.onTimeUpdate(cur, dur);
-            }
-          }
-        } catch {
-          // Ignore polling before player ready
+    return () => {
+      cancelled = true;
+      playerReadyRef.current = false;
+      try {
+        playerRef.current?.destroy();
+      } catch {
+        // Ignore teardown errors
+      }
+      playerRef.current = null;
+    };
+  }, []);
+
+  // Load or cue video when videoId or active changes
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !playerReadyRef.current) return;
+
+    if (!active || !videoId) {
+      try {
+        player.pauseVideo();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    if (loadedVideoIdRef.current !== videoId) {
+      loadedVideoIdRef.current = videoId;
+      if (isPlaying) {
+        player.loadVideoById(videoId, 0);
+      } else {
+        player.cueVideoById(videoId, 0);
+      }
+    }
+  }, [videoId, active, isPlaying]);
+
+  // Play / Pause synchronization
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !playerReadyRef.current || !active || !videoId) return;
+
+    try {
+      const state = player.getPlayerState?.();
+      if (isPlaying && state !== 1 && state !== 3) {
+        player.playVideo();
+      } else if (!isPlaying && state === 1) {
+        player.pauseVideo();
+      }
+    } catch {
+      // ignore transient iframe state errors
+    }
+  }, [isPlaying, active, videoId]);
+
+  // Volume synchronization
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !playerReadyRef.current) return;
+    try {
+      player.setVolume(volumePercent);
+    } catch {
+      // ignore
+    }
+  }, [volumePercent]);
+
+  // Seek synchronization
+  useEffect(() => {
+    const player = playerRef.current;
+    if (
+      seekRequestSec === null ||
+      !player ||
+      !playerReadyRef.current ||
+      !active ||
+      !videoId
+    ) {
+      return;
+    }
+    try {
+      player.seekTo(seekRequestSec, true);
+    } catch {
+      // ignore
+    }
+  }, [seekRequestSec, active, videoId]);
+
+  // Poll currentTime & duration at 250ms when active
+  useEffect(() => {
+    if (!active || !videoId) return;
+    const interval = window.setInterval(() => {
+      const player = playerRef.current;
+      if (!player || !playerReadyRef.current) return;
+      try {
+        const cur = player.getCurrentTime?.() || 0;
+        const dur = player.getDuration?.() || 0;
+        if (dur > 0) {
+          stateCallbacksRef.current.onTimeUpdate(cur, dur);
         }
-      }, 400);
+      } catch {
+        // ignore
+      }
+    }, 250);
+    return () => window.clearInterval(interval);
+  }, [active, videoId]);
 
-      return () => {
-        cancelled = true;
-        window.clearInterval(pollTimer);
-        if (playerRef.current) {
-          try {
-            playerRef.current.destroy();
-          } catch {
-            // Ignore cleanup errors
-          }
-          playerRef.current = null;
-        }
-        readyRef.current = false;
-      };
-    }, []);
+  const isVisible = active && Boolean(videoId) && displayMode !== 'hidden';
+  const isTheater = isVisible && displayMode === 'theater';
 
-    useImperativeHandle(
-      ref,
-      () => ({
-        loadAndPlay: (videoIds: string[]) => {
-          candidatesRef.current = videoIds;
-          candidateIndexRef.current = 0;
-          if (playerRef.current && readyRef.current) {
-            loadCandidateAt(0);
-          } else {
-            pendingVideoIdsRef.current = videoIds;
-          }
-        },
-        play: () => {
-          if (playerRef.current && readyRef.current) {
-            playerRef.current.playVideo();
-          }
-        },
-        pause: () => {
-          if (playerRef.current && readyRef.current) {
-            playerRef.current.pauseVideo();
-          }
-        },
-        stop: () => {
-          pendingVideoIdsRef.current = null;
-          if (playerRef.current && readyRef.current) {
-            try {
-              playerRef.current.stopVideo();
-            } catch {
-              // Ignore
-            }
-          }
-        },
-        seekTo: (seconds: number) => {
-          if (playerRef.current && readyRef.current) {
-            playerRef.current.seekTo(seconds, true);
-          }
-        },
-        setVolume: (volume01: number, muted: boolean) => {
-          if (playerRef.current && readyRef.current) {
-            if (muted) {
-              playerRef.current.mute();
-            } else {
-              playerRef.current.unMute();
-              playerRef.current.setVolume(Math.round(volume01 * 100));
-            }
-          }
-        },
-      }),
-      []
-    );
+  return (
+    <>
+      {/* Optional backdrop in Theater Mode */}
+      {isTheater && (
+        <div
+          onClick={() => onDisplayModeChange('pip')}
+          className="fixed inset-0 z-40 bg-black/80 backdrop-blur-sm"
+        />
+      )}
 
-    return (
       <div
-        aria-hidden={!active}
+        aria-hidden={!isVisible}
         className={
-          active
-            ? visibleInRightPanel
-              ? 'fixed z-30 bottom-[96px] right-4 xl:bottom-auto xl:top-[124px] xl:right-6 w-[210px] xl:w-[258px] aspect-video rounded-md overflow-hidden bg-black shadow-2xl border border-white/10 transition-opacity duration-200'
-              : 'fixed z-30 bottom-[84px] sm:bottom-[96px] right-3 w-[196px] aspect-video rounded-md overflow-hidden bg-black shadow-2xl border border-white/15 transition-opacity duration-200'
-            : 'fixed -left-[9999px] -top-[9999px] w-[200px] h-[112px] opacity-0 pointer-events-none'
+          !isVisible
+            ? 'fixed -left-[9999px] -top-[9999px] w-[356px] h-[200px] opacity-0 pointer-events-none overflow-hidden'
+            : isTheater
+            ? 'fixed z-50 inset-x-4 sm:inset-x-10 lg:inset-x-24 top-16 bottom-28 bg-[#141414] rounded-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden'
+            : 'fixed z-30 right-4 bottom-24 w-72 sm:w-[356px] bg-[#181818] rounded-xl border border-white/15 shadow-2xl flex flex-col overflow-hidden'
         }
       >
-        <div ref={mountRef} className="w-full h-full" />
+        {isVisible && (
+          <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[#121212] border-b border-white/10 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <Youtube className="w-4 h-4 text-red-500 fill-red-500 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-white truncate">
+                  {trackTitle || 'Clip YouTube'}
+                </p>
+                {trackArtist && isTheater && (
+                  <p className="text-[11px] text-[#a0a0a0] truncate">
+                    {trackArtist}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {onChangeYouTubeLink && (
+                <button
+                  type="button"
+                  onClick={onChangeYouTubeLink}
+                  title="Changer le lien YouTube associé"
+                  className="p-1.5 rounded-md text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  onDisplayModeChange(isTheater ? 'pip' : 'theater')
+                }
+                title={isTheater ? 'Réduire en mini-lecteur' : 'Mode Cinéma'}
+                className="p-1.5 rounded-md text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                {isTheater ? (
+                  <Minimize2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClosePlayer) {
+                    onClosePlayer();
+                  } else {
+                    onDisplayModeChange('hidden');
+                  }
+                }}
+                title="Fermer le lecteur vidéo (met en pause)"
+                className="p-1.5 rounded-md text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div
+          ref={mountNodeRef}
+          className={
+            isTheater
+              ? 'flex-1 w-full bg-black'
+              : 'w-full aspect-video sm:h-[200px] bg-black'
+          }
+        />
       </div>
-    );
-  }
-);
+    </>
+  );
+}
