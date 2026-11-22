@@ -1,24 +1,22 @@
 import { useState } from 'react';
 import {
-  HardDrive,
-  Heart,
-  Link2,
+  Check,
   ListMusic,
   Loader2,
   Moon,
+  Music,
   Pause,
   Play,
+  Plus,
   Repeat,
   Repeat1,
   Shuffle,
   SkipBack,
   SkipForward,
-  Sparkles,
   Tv,
   Volume1,
   Volume2,
   VolumeX,
-  Youtube,
 } from 'lucide-react';
 import type {
   AudioSourceKind,
@@ -98,7 +96,6 @@ export function PlayerBar({
   onToggleLike,
   onToggleQueuePanel,
   onToggleVideoMode,
-  onAttachYouTubeLink,
   onSelectSleepTimer,
   onSelectArtist,
 }: PlayerBarProps) {
@@ -112,72 +109,36 @@ export function PlayerBar({
       : 0;
   const displayVolume = isMuted ? 0 : volume;
 
-  const renderSourceBadge = () => {
-    if (!currentTrack) return null;
-    if (
-      activeAudioSource === 'local-idb' ||
-      activeAudioSource === 'local-folder'
-    ) {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-[#1ED760]/18 text-[#1ED760] text-[10px] font-bold shrink-0">
-          <HardDrive className="w-2.5 h-2.5" />
-          MP3 Local
-        </span>
-      );
-    }
-    if (activeAudioSource === 'youtube') {
-      return (
-        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500/18 text-rose-300 text-[10px] font-semibold shrink-0">
-          <Youtube className="w-2.5 h-2.5 fill-current" />
-          Intégral
-        </span>
-      );
-    }
-    return null;
-  };
-
   return (
-    <footer className="h-[86px] px-3 sm:px-5 bg-[#090b11]/95 backdrop-blur-2xl border-t border-white/[0.08] grid grid-cols-[1fr_auto] md:grid-cols-3 items-center gap-3 shrink-0 select-none z-20 relative shadow-[0_-12px_32px_rgba(0,0,0,0.6)]">
-      {/* Left: Active Track Metadata or Clean First-Visit Prompt */}
+    <footer
+      style={{ backgroundColor: 'var(--player-bg)' }}
+      className="h-[82px] px-3 sm:px-5 backdrop-blur-xl border-t border-[var(--border-panel)] grid grid-cols-[1fr_auto] md:grid-cols-3 items-center gap-3 shrink-0 select-none z-20 relative transition-colors duration-250"
+    >
+      {/* Left: Cover + Title + Artist + Round Check (✓) (exact image-1.png) */}
       <div className="flex items-center gap-3.5 min-w-0">
         {currentTrack ? (
           <>
-            <div className="relative shrink-0">
-              <AlbumCover
-                src={currentTrack.coverUrl}
-                alt={currentTrack.title}
-                sizeClass="w-13.5 h-13.5"
-                roundedClass="rounded-xl shadow-lg"
-              />
-              {isPlaying && (
-                <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md bg-[#0b0d14] border border-white/15 inline-flex items-end gap-0.5 h-4">
-                  <span className="w-0.5 h-2.5 bg-[#1ED760] animate-eq-1" />
-                  <span className="w-0.5 h-2.5 bg-[#1ED760] animate-eq-2" />
-                  <span className="w-0.5 h-2.5 bg-[#1ED760] animate-eq-3" />
-                </span>
-              )}
-            </div>
+            <AlbumCover
+              src={currentTrack.coverUrl}
+              alt={currentTrack.title}
+              sizeClass="w-13.5 h-13.5"
+              roundedClass="rounded-md shadow-md"
+            />
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-bold text-white truncate">
-                  {currentTrack.title}
-                </p>
-                <span className="hidden xl:inline-flex">
-                  {renderSourceBadge()}
-                </span>
-              </div>
-
+              <p className="text-sm font-bold text-[var(--text-main)] truncate">
+                {currentTrack.title}
+              </p>
               {onSelectArtist ? (
                 <button
                   type="button"
                   onClick={() => onSelectArtist(currentTrack.artist)}
-                  className="text-xs text-[#9ca3b0] hover:text-white hover:underline truncate block text-left max-w-full mt-0.5 cursor-pointer"
+                  className="text-xs text-[var(--text-sub)] hover:text-[var(--text-main)] hover:underline truncate block text-left max-w-full mt-0.5 cursor-pointer"
                 >
                   {currentTrack.artist}
                 </button>
               ) : (
-                <p className="text-xs text-[#9ca3b0] truncate mt-0.5">
+                <p className="text-xs text-[var(--text-sub)] truncate mt-0.5">
                   {currentTrack.artist}
                 </p>
               )}
@@ -191,94 +152,79 @@ export function PlayerBar({
                   ? 'Retirer des favoris'
                   : 'Ajouter aux Titres likés'
               }
-              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+              className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 cursor-pointer ${
                 currentTrack.liked
-                  ? 'bg-[#1ED760]/18 text-[#1ED760]'
-                  : 'text-[#8b93a4] hover:text-white hover:bg-white/[0.08]'
+                  ? 'bg-[var(--accent)] text-white shadow-xs'
+                  : 'border border-[var(--text-sub)] text-[var(--text-sub)] hover:border-[var(--text-main)] hover:text-[var(--text-main)]'
               }`}
             >
-              <Heart
-                className={`w-4 h-4 ${
-                  currentTrack.liked ? 'fill-[#1ED760]' : ''
-                }`}
-              />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onAttachYouTubeLink(currentTrack)}
-              title="Changer le lien YouTube associé"
-              aria-label="Changer le lien YouTube"
-              className="hidden lg:flex w-7.5 h-7.5 rounded-lg hover:bg-white/[0.08] items-center justify-center shrink-0 text-[#7d8596] hover:text-white transition-colors cursor-pointer"
-            >
-              <Link2 className="w-3.5 h-3.5" />
+              {currentTrack.liked ? (
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+              ) : (
+                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              )}
             </button>
           </>
         ) : (
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center text-[#6e7787] shrink-0">
-              <Sparkles className="w-5 h-5 text-[#1ED760]" />
+            <div className="w-12 h-12 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+              <Music className="w-5 h-5 text-[var(--text-sub)]" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm font-semibold text-white truncate">
-                Prêt à jouer
+              <p className="text-xs sm:text-sm font-medium text-[var(--text-main)] truncate">
+                Aucune lecture
               </p>
-              {onPlaySmartMix ? (
+              {onPlaySmartMix && (
                 <button
                   type="button"
                   onClick={onPlaySmartMix}
-                  className="text-xs text-[#1ED760] hover:underline font-medium truncate cursor-pointer"
+                  className="text-xs text-[var(--text-sub)] hover:text-[var(--text-main)] hover:underline truncate block cursor-pointer"
                 >
-                  Lancer un mix aléatoire →
+                  Lecture aléatoire
                 </button>
-              ) : (
-                <p className="text-xs text-[#7d8596] truncate">
-                  Sélectionnez une musique pour démarrer
-                </p>
               )}
             </div>
           </div>
         )}
       </div>
 
-      {/* Center: Transport Controls + Luminous Progress Scrubber */}
-      <div className="flex flex-col items-end md:items-center justify-center gap-1.5 max-w-xl w-full mx-auto">
-        <div className="flex items-center gap-3 sm:gap-5">
+      {/* Center: Transport Controls + Progress Bar (exact image-1.png) */}
+      <div className="flex flex-col items-center justify-center gap-1.5 max-w-xl w-full mx-auto">
+        <div className="flex items-center gap-4 sm:gap-5">
           <button
             type="button"
             onClick={onToggleShuffle}
             aria-label="Lecture aléatoire"
-            className={`hidden sm:inline-flex transition-colors relative cursor-pointer ${
-              isShuffle ? 'text-[#1ED760]' : 'text-[#8b93a4] hover:text-white'
+            className={`hidden sm:flex items-center justify-center transition-colors cursor-pointer ${
+              isShuffle
+                ? 'text-[var(--accent)]'
+                : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
             }`}
           >
             <Shuffle className="w-4 h-4" />
-            {isShuffle && (
-              <span className="w-1 h-1 rounded-full bg-[#1ED760] absolute -bottom-1.5 left-1/2 -translate-x-1/2" />
-            )}
           </button>
 
           <button
             type="button"
             onClick={onPrev}
             aria-label="Titre précédent"
-            className="text-[#b8beca] hover:text-white transition-colors cursor-pointer"
+            className="text-[var(--text-sub)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
           >
-            <SkipBack className="w-5 h-5 fill-current" />
+            <SkipBack className="w-4.5 h-4.5 fill-current" />
           </button>
 
           <button
             type="button"
             onClick={onTogglePlay}
             aria-label={isPlaying ? 'Pause' : 'Lecture'}
-            className="w-10 h-10 rounded-full bg-white hover:bg-[#1ED760] text-black flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-[0_4px_18px_rgba(255,255,255,0.22)] cursor-pointer"
+            className="w-9 h-9 rounded-full bg-[var(--pill-active-bg)] text-[var(--pill-active-fg)] flex items-center justify-center hover:scale-105 active:scale-95 transition-transform shadow-sm cursor-pointer"
           >
             {isLoadingAudio ? (
-              <Loader2 className="w-4.5 h-4.5 animate-spin text-black" />
+              <Loader2 className="w-4.5 h-4.5 animate-spin" />
             ) : isPlaying ? (
-              <Pause className="w-4.5 h-4.5 fill-black" />
+              <Pause className="w-4.5 h-4.5 fill-current" />
             ) : (
-              <Play className="w-4.5 h-4.5 fill-black ml-0.5" />
+              <Play className="w-4.5 h-4.5 fill-current ml-0.5" />
             )}
           </button>
 
@@ -286,19 +232,19 @@ export function PlayerBar({
             type="button"
             onClick={onNext}
             aria-label="Titre suivant"
-            className="text-[#b8beca] hover:text-white transition-colors cursor-pointer"
+            className="text-[var(--text-sub)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
           >
-            <SkipForward className="w-5 h-5 fill-current" />
+            <SkipForward className="w-4.5 h-4.5 fill-current" />
           </button>
 
           <button
             type="button"
             onClick={onCycleRepeat}
             aria-label="Mode répétition"
-            className={`hidden sm:inline-flex transition-colors relative cursor-pointer ${
+            className={`hidden sm:flex items-center justify-center transition-colors cursor-pointer ${
               repeatMode !== 'off'
-                ? 'text-[#1ED760]'
-                : 'text-[#8b93a4] hover:text-white'
+                ? 'text-[var(--accent)]'
+                : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
             }`}
           >
             {repeatMode === 'one' ? (
@@ -306,65 +252,59 @@ export function PlayerBar({
             ) : (
               <Repeat className="w-4 h-4" />
             )}
-            {repeatMode !== 'off' && (
-              <span className="w-1 h-1 rounded-full bg-[#1ED760] absolute -bottom-1.5 left-1/2 -translate-x-1/2" />
-            )}
           </button>
         </div>
 
-        {/* Progress Bar */}
-        <div className="hidden sm:flex items-center gap-2.5 w-full">
-          <span className="text-[11px] text-[#8b93a4] font-mono-tabular w-9 text-right">
+        {/* Seek Bar */}
+        <div className="hidden md:flex items-center gap-2.5 w-full">
+          <span className="text-[11px] text-[var(--text-sub)] font-mono-tabular w-9 text-right">
             {formatTime(currentTimeSec)}
           </span>
 
           <div className="relative flex-1 h-4 flex items-center group">
-            <div className="w-full h-1.5 rounded-full bg-white/[0.12] overflow-hidden">
+            <div className="w-full h-1 rounded-full bg-[var(--border-strong)] overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-[#1ED760] to-[#4ade80] rounded-full transition-[width] duration-150"
+                className="h-full bg-[var(--text-main)] group-hover:bg-[var(--accent)] transition-colors rounded-full"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
             <input
               type="range"
+              aria-label="Progression du morceau"
               min={0}
               max={effectiveDuration || 100}
-              step={0.5}
+              step={1}
               value={Math.min(currentTimeSec, effectiveDuration || 100)}
+              disabled={!currentTrack}
               onChange={(e) => onSeek(Number(e.target.value))}
-              aria-label="Progression du titre"
-              className="absolute inset-0 w-full opacity-0 cursor-pointer"
+              className="absolute inset-0 w-full opacity-0 cursor-pointer disabled:cursor-default"
             />
           </div>
 
-          <span className="text-[11px] text-[#8b93a4] font-mono-tabular w-9">
+          <span className="text-[11px] text-[var(--text-sub)] font-mono-tabular w-9">
             {formatTime(effectiveDuration)}
           </span>
         </div>
       </div>
 
-      {/* Right: Video Mode, Sleep Timer, Queue & Volume */}
+      {/* Right: Queue + Video + Sleep + Volume (exact image-1.png) */}
       <div className="hidden md:flex items-center justify-end gap-2.5">
         {activeAudioSource === 'youtube' && (
           <button
             type="button"
             onClick={onToggleVideoMode}
-            aria-label="Basculer le mode Cinéma vidéo"
             title={
               videoDisplayMode === 'theater'
-                ? 'Réduire en mini-lecteur (V)'
-                : 'Agrandir en mode Cinéma (V)'
+                ? 'Réduire le clip'
+                : 'Agrandir le clip'
             }
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
               videoDisplayMode === 'theater'
-                ? 'bg-[#1ED760]/18 text-[#1ED760] border border-[#1ED760]/35'
-                : 'bg-white/[0.06] text-[#c8cdd6] hover:text-white border border-white/[0.08]'
+                ? 'text-[var(--accent)] bg-[var(--accent-soft)]'
+                : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
             }`}
           >
-            <Tv className="w-3.5 h-3.5" />
-            <span className="hidden xl:inline">
-              {videoDisplayMode === 'theater' ? 'Cinéma' : 'Vidéo'}
-            </span>
+            <Tv className="w-4 h-4" />
           </button>
         )}
 
@@ -372,25 +312,27 @@ export function PlayerBar({
         <div className="relative">
           <button
             type="button"
-            onClick={() => setShowSleepMenu((prev) => !prev)}
-            aria-label="Minuterie de mise en veille"
-            title="Minuterie de mise en veille"
-            className={`w-8 h-8 rounded-lg flex items-center justify-center gap-1 text-xs transition-colors cursor-pointer ${
+            onClick={() => setShowSleepMenu((v) => !v)}
+            title="Mise en veille automatique"
+            aria-label="Mise en veille automatique"
+            className={`h-8 px-2 rounded-full flex items-center gap-1 text-xs transition-colors cursor-pointer ${
               activeSleepOption !== 0
-                ? 'bg-[#1ED760]/15 text-[#1ED760]'
-                : 'text-[#8b93a4] hover:text-white hover:bg-white/[0.06]'
+                ? 'text-[var(--accent)] bg-[var(--accent-soft)] font-semibold'
+                : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
             }`}
           >
             <Moon className="w-4 h-4" />
+            {sleepTimerRemainingMin !== null && (
+              <span className="font-mono-tabular text-[10.5px]">
+                {sleepTimerRemainingMin}m
+              </span>
+            )}
           </button>
 
           {showSleepMenu && (
-            <div className="absolute bottom-11 right-0 w-48 py-1.5 rounded-xl bg-[#161a26] border border-white/12 shadow-2xl text-xs text-white z-40">
-              <p className="px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-[#7d8596] border-b border-white/[0.07]">
+            <div className="absolute right-0 bottom-11 z-30 w-48 py-1.5 rounded-xl bg-[var(--bg-panel-solid)] border border-[var(--border-strong)] shadow-2xl text-xs text-[var(--text-main)] anim-modal">
+              <p className="px-3.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                 Mise en veille
-                {sleepTimerRemainingMin
-                  ? ` (${sleepTimerRemainingMin}m)`
-                  : ''}
               </p>
               {SLEEP_OPTIONS.map((opt) => (
                 <button
@@ -400,66 +342,66 @@ export function PlayerBar({
                     onSelectSleepTimer(opt.value);
                     setShowSleepMenu(false);
                   }}
-                  className={`w-full px-3 py-2 text-left hover:bg-white/10 flex items-center justify-between cursor-pointer ${
+                  className={`w-full px-3.5 py-1.5 text-left hover:bg-[var(--bg-row-hover)] flex items-center justify-between cursor-pointer ${
                     activeSleepOption === opt.value
-                      ? 'text-[#1ED760] font-bold'
-                      : 'text-white'
+                      ? 'text-[var(--accent)] font-bold'
+                      : ''
                   }`}
                 >
                   <span>{opt.label}</span>
-                  {activeSleepOption === opt.value && <span>✓</span>}
+                  {activeSleepOption === opt.value && (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
                 </button>
               ))}
             </div>
           )}
         </div>
 
-        {/* Queue Toggle */}
         <button
           type="button"
           onClick={onToggleQueuePanel}
-          aria-label="Afficher la file d'attente"
-          title="File d'attente"
-          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors relative cursor-pointer ${
+          aria-label="File d'attente"
+          title="Afficher / masquer la file d'attente"
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
             showQueuePanel
-              ? 'bg-[#1ED760]/15 text-[#1ED760]'
-              : 'text-[#8b93a4] hover:text-white hover:bg-white/[0.06]'
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--text-sub)] hover:text-[var(--text-main)]'
           }`}
         >
-          <ListMusic className="w-4 h-4" />
+          <ListMusic className="w-4.5 h-4.5" />
         </button>
 
-        {/* Volume */}
         <button
           type="button"
           onClick={onToggleMute}
-          aria-label={isMuted ? 'Réactiver le son' : 'Couper le son'}
-          className="text-[#8b93a4] hover:text-white transition-colors cursor-pointer"
+          aria-label={isMuted ? 'Activer le son' : 'Couper le son'}
+          className="text-[var(--text-sub)] hover:text-[var(--text-main)] transition-colors cursor-pointer"
         >
-          {displayVolume === 0 ? (
-            <VolumeX className="w-4 h-4" />
+          {isMuted || displayVolume === 0 ? (
+            <VolumeX className="w-4.5 h-4.5" />
           ) : displayVolume < 0.5 ? (
-            <Volume1 className="w-4 h-4" />
+            <Volume1 className="w-4.5 h-4.5" />
           ) : (
-            <Volume2 className="w-4 h-4" />
+            <Volume2 className="w-4.5 h-4.5" />
           )}
         </button>
 
         <div className="relative w-24 h-4 flex items-center group">
-          <div className="w-full h-1.5 rounded-full bg-white/[0.12] overflow-hidden">
+          <div className="w-full h-1 rounded-full bg-[var(--border-strong)] overflow-hidden">
             <div
-              className="h-full bg-white group-hover:bg-[#1ED760] rounded-full transition-colors"
-              style={{ width: `${displayVolume * 100}%` }}
+              className="h-full bg-[var(--text-main)] group-hover:bg-[var(--accent)] transition-colors rounded-full"
+              style={{ width: `${Math.round(displayVolume * 100)}%` }}
             />
           </div>
           <input
             type="range"
+            aria-label="Volume"
             min={0}
             max={1}
             step={0.01}
             value={displayVolume}
             onChange={(e) => onVolumeChange(Number(e.target.value))}
-            aria-label="Volume"
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
           />
         </div>

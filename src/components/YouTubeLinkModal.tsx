@@ -6,7 +6,6 @@ import {
   Music2,
   Play,
   Plus,
-  Sparkles,
   X,
   Youtube,
 } from 'lucide-react';
@@ -196,7 +195,7 @@ export function YouTubeLinkModal({
               className="flex items-center justify-between text-xs font-medium text-[#d4d4d4]"
             >
               <span className="flex items-center gap-1.5">
-                <Link2 className="w-3.5 h-3.5 text-[#1ED760]" />
+                <Link2 className="w-3.5 h-3.5 text-[#ea6824]" />
                 {targetTrack
                   ? 'Lien de partage YouTube'
                   : 'Lien(s) de partage YouTube (un ou plusieurs, 1 par ligne)'}
@@ -212,7 +211,7 @@ export function YouTubeLinkModal({
                 value={rawInput}
                 onChange={(e) => setRawInput(e.target.value)}
                 placeholder="https://youtu.be/4NRXx6U8ABQ?si=..."
-                className="w-full h-11 px-3.5 rounded-lg bg-[#121212] text-sm text-white placeholder-[#707070] border border-white/15 focus:border-[#1ED760] outline-none transition-colors"
+                className="w-full h-11 px-3.5 rounded-lg bg-[#121212] text-sm text-white placeholder-[#707070] border border-white/15 focus:border-[#ea6824] outline-none transition-colors"
               />
             ) : (
               <textarea
@@ -224,7 +223,7 @@ export function YouTubeLinkModal({
                 placeholder={
                   'Ex : https://youtu.be/4NRXx6U8ABQ?si=...\nhttps://music.youtube.com/watch?v=oiKj0Z_Xnjc'
                 }
-                className="w-full p-3.5 rounded-lg bg-[#121212] text-sm text-white placeholder-[#707070] border border-white/15 focus:border-[#1ED760] outline-none resize-none transition-colors"
+                className="w-full p-3.5 rounded-lg bg-[#121212] text-sm text-white placeholder-[#707070] border border-white/15 focus:border-[#ea6824] outline-none resize-none transition-colors"
               />
             )}
           </div>
@@ -233,13 +232,13 @@ export function YouTubeLinkModal({
 
           {resolving && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-lg bg-[#121212] border border-white/10 text-xs text-[#b3b3b3]">
-              <Loader2 className="w-4 h-4 animate-spin text-[#1ED760]" />
+              <Loader2 className="w-4 h-4 animate-spin text-[#ea6824]" />
               <span>Récupération automatique du titre et de la miniature via oEmbed…</span>
             </div>
           )}
 
           {!resolving && resolvedList.length === 1 && (
-            <div className="p-4 rounded-xl bg-[#121212] border border-[#1ED760]/35 space-y-3.5">
+            <div className="p-4 rounded-xl bg-[#121212] border border-[#ea6824]/35 space-y-3.5">
               <div className="flex items-center gap-3.5">
                 <AlbumCover
                   src={resolvedList[0].coverUrl}
@@ -248,7 +247,7 @@ export function YouTubeLinkModal({
                   roundedClass="rounded-md"
                 />
                 <div className="min-w-0 flex-1 space-y-1">
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1ED760]">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#ea6824]">
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     Vidéo prête ({resolvedList[0].videoId})
                   </span>
@@ -299,11 +298,11 @@ export function YouTubeLinkModal({
           )}
 
           {!resolving && resolvedList.length > 1 && (
-            <div className="p-3.5 rounded-xl bg-[#121212] border border-[#1ED760]/35 space-y-2.5">
+            <div className="p-3.5 rounded-xl bg-[#121212] border border-[#ea6824]/35 space-y-2.5">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-[#1ED760] flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  {resolvedList.length} liens YouTube détectés prêts à l&apos;import
+                <span className="font-semibold text-[#ea6824] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {resolvedList.length} liens prêts à l&apos;import
                 </span>
               </div>
               <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1">
@@ -337,7 +336,7 @@ export function YouTubeLinkModal({
                 htmlFor="yt-modal-playlist-select"
                 className="text-xs text-[#b3b3b3] flex items-center gap-1.5"
               >
-                <Music2 className="w-3.5 h-3.5 text-[#1ED760]" />
+                <Music2 className="w-3.5 h-3.5 text-[#ea6824]" />
                 Ajouter dans :
               </label>
               <select
@@ -380,7 +379,7 @@ export function YouTubeLinkModal({
             <button
               type="submit"
               disabled={resolving || resolvedList.length === 0}
-              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] disabled:opacity-40 text-black text-xs font-bold transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-5 py-2 rounded-full bg-[#ea6824] hover:bg-[#f37736] disabled:opacity-40 text-white text-xs font-bold transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[2.5]" />
               <span>

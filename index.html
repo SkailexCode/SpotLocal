@@ -1,17 +1,24 @@
 <!doctype html>
-<html lang="fr" class="dark">
+<html lang="fr" data-theme="warm">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#000000" />
-    <title>SpotLocal — Lecteur Musical Web Intégral (YouTube &amp; MP3 Local)</title>
-    <meta name="description" content="Lecteur musical Web open-source sans clé API : plus de 5 000 titres intégraux via YouTube, import de liens YouTube et lecture de vos MP3 locaux." />
+    <meta name="theme-color" content="#efe0cb" />
+    <title>SpotLocal — Lecteur Musical Web Intégral (332k+ &amp; 100M+ YouTube Live)</title>
+    <meta name="description" content="Lecteur musical Web open-source sans clé API : 332 593 titres embarqués, recherche mondiale 100M+ YouTube Music en direct et lecture de vos MP3 locaux." />
     <meta property="og:title" content="SpotLocal — Lecteur Musical Web Intégral" />
-    <meta property="og:description" content="Écoutez plus de 5 000 musiques en entier via YouTube, collez vos liens YouTube et glissez vos fichiers MP3 locaux sans clé API." />
+    <meta property="og:description" content="332 593 musiques instantanées + 100M+ YouTube Music en direct et fichiers MP3 locaux, sans compte ni clé API." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" type="image/svg+xml" href="./icon.svg" />
     <link rel="manifest" href="./manifest.json" />
+
+    <script>
+      try {
+        const saved = localStorage.getItem('spotlocal_theme_v1');
+        document.documentElement.dataset.theme = saved === 'dark' ? 'dark' : 'warm';
+      } catch {}
+    </script>
 
     <!-- Early DNS + TLS preconnect for Fonts & YouTube Player/Thumbnails -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,7 +28,7 @@
 
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-black text-white antialiased selection:bg-[#1ED760]/30 selection:text-white">
+  <body class="antialiased selection:bg-[#ea6824]/25">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

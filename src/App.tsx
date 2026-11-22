@@ -42,7 +42,7 @@ import {
   resolveYouTubeMetadataClient,
 } from './utils/webCatalogSearch';
 import { resolvePublicAssetUrl } from './components/AlbumCover';
-import { TopBar } from './components/TopBar';
+import { TopBar, type ThemeMode } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
 import { TrackListView } from './components/TrackListView';
 import { RightQueuePanel } from './components/RightQueuePanel';
@@ -175,7 +175,31 @@ function loadInitialPlaylists(): Playlist[] {
 export default function App() {
   const initial = useMemo(() => loadInitialUserState(), []);
 
-  // O(1) User State Overlay on top of the 112,000-track Columnar Catalog
+  // Theme: Default Warm Orange & Beige ('warm') + 1-Click Dark Mode ('dark')
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    try {
+      const saved = localStorage.getItem('spotlocal_theme_v1');
+      if (saved === 'dark' || saved === 'warm') return saved;
+    } catch {
+      // Ignore
+    }
+    return 'warm';
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('spotlocal_theme_v1', theme);
+    } catch {
+      // Ignore
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'warm' ? 'dark' : 'warm'));
+  }, []);
+
+  // O(1) User State Overlay on top of the 332,593-track Columnar Catalog
   const [likedIds, setLikedIds] = useState<Set<string>>(initial.likedIds);
   const [trackOverrides, setTrackOverrides] = useState<
     Record<string, Partial<Track>>
@@ -188,11 +212,8 @@ export default function App() {
   );
   const [playlists, setPlaylists] = useState<Playlist[]>(loadInitialPlaylists);
 
-  // Progressive 112k Catalog Sync State
+  // Progressive Catalog Sync State
   const [catalogVersion, setCatalogVersion] = useState(0);
-  const [isCatalogSyncing, setIsCatalogSyncing] = useState(
-    !catalogStore.isFullyLoaded()
-  );
 
   useEffect(() => {
     let active = true;
@@ -202,7 +223,6 @@ export default function App() {
       })
       .finally(() => {
         if (active) {
-          setIsCatalogSyncing(false);
           setCatalogVersion((v) => v + 1);
         }
       });
@@ -221,21 +241,6 @@ export default function App() {
   );
   const overlayRef = useRef<UserLibraryOverlay>(overlay);
   overlayRef.current = overlay;
-
-  const catalogCount = useMemo(() => {
-    void catalogVersion;
-    return catalogStore.getCatalogCount() + customTracks.length;
-  }, [catalogVersion, customTracks.length]);
-
-  const artistCount = useMemo(() => {
-    void catalogVersion;
-    return catalogStore.getArtistCount();
-  }, [catalogVersion]);
-
-  const totalHours = useMemo(() => {
-    void catalogVersion;
-    return catalogStore.getTotalDurationHours();
-  }, [catalogVersion]);
 
   // Navigation State (clean first-visit starts on Home)
   const [activeView, setActiveView] = useState<ActiveView>('home');
@@ -1532,7 +1537,7 @@ export default function App() {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="h-screen w-screen overflow-hidden bg-[#07080c] text-[#f5f7fa] flex flex-col select-none relative"
+      className="h-screen w-screen overflow-hidden app-canvas flex flex-col select-none relative"
     >
       {/* Hidden HTML5 Audio Engine for Local MP3s */}
       <audio
@@ -1588,47 +1593,40 @@ export default function App() {
 
       {/* Drag-and-Drop Overlay */}
       {isDraggingFiles && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md border-4 border-dashed border-[#1ED760] m-3 rounded-3xl flex flex-col items-center justify-center gap-3 pointer-events-none">
-          <Upload className="w-14 h-14 text-[#1ED760]" />
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md border-4 border-dashed border-[var(--accent)] m-3 rounded-3xl flex flex-col items-center justify-center gap-3 pointer-events-none">
+          <Upload className="w-14 h-14 text-[var(--accent)]" />
           <p className="font-display font-bold text-2xl text-white">
             Déposez vos fichiers MP3 / Audio ici
           </p>
-          <p className="text-sm text-[#9ca3b0]">
+          <p className="text-sm text-white/75">
             Stockage persistant dans le navigateur (IndexedDB) — aucun envoi réseau
           </p>
         </div>
       )}
 
-      {/* Top Studio Command Bar */}
+      {/* Top Classic Command Bar */}
       <TopBar
         activeView={activeView}
+        theme={theme}
         searchQuery={searchQuery}
-        catalogCount={catalogCount}
-        isCatalogSyncing={isCatalogSyncing}
         searchInputRef={searchInputRef}
+        onToggleTheme={toggleTheme}
         onSearchChange={setSearchQuery}
         onGoHome={goHome}
         onOpenSearch={goSearch}
-        onPlaySmartMix={() => handlePlaySmartMix()}
         onOpenYouTubeModal={openYouTubeAddModal}
         onOpenImportModal={openImportModal}
-        onOpenShortcutsModal={openShortcutsModal}
-        onOpenLegalModal={openLegalModal}
         onOpenMobileMenu={openMobileDrawer}
       />
 
       {/* Main 3-Pane Studio Workspace */}
-      <div className="flex-1 min-h-0 flex gap-2.5 px-2.5 py-2">
+      <div className="flex-1 min-h-0 flex gap-2 px-2 pb-2">
         <Sidebar
           activeView={activeView}
           selectedPlaylistId={selectedPlaylistId}
           selectedArtist={selectedArtist}
-          likedCount={likedIds.size}
-          catalogCount={catalogCount}
-          artistCount={artistCount}
           catalogVersion={catalogVersion}
           playlists={playlists}
-          onGoHome={goHome}
           onSelectLiked={goLiked}
           onSelectAllTracks={() => goAllTracks('all', 0)}
           onSelectMoods={goMoods}
@@ -1636,7 +1634,6 @@ export default function App() {
           onSelectPlaylist={openPlaylistView}
           onCreatePlaylist={openCreatePlaylist}
           onOpenImportModal={openImportModal}
-          onOpenYouTubeModal={openYouTubeAddModal}
           mobileOpen={mobileMenuOpen}
           onCloseMobile={closeMobileDrawer}
         />
@@ -1644,15 +1641,11 @@ export default function App() {
         {/* Center Content View */}
         <Suspense
           fallback={
-            <div className="flex-1 rounded-2xl studio-panel animate-pulse" />
+            <div className="flex-1 rounded-xl studio-panel animate-pulse" />
           }
         >
           {activeView === 'home' && (
             <HomeView
-              likedCount={likedIds.size}
-              catalogCount={catalogCount}
-              artistCount={artistCount}
-              totalHours={totalHours}
               catalogVersion={catalogVersion}
               overlay={overlay}
               playlists={playlists}
@@ -1667,14 +1660,11 @@ export default function App() {
               onPlayTrack={handlePlayTrack}
               onPlaySmartMix={handlePlaySmartMix}
               onToggleLike={handleToggleLike}
-              onQuickPasteYouTubeUrl={handleQuickPasteYouTubeUrl}
-              onOpenImportModal={openImportModal}
             />
           )}
 
           {activeView === 'moods' && (
             <MoodsView
-              catalogVersion={catalogVersion}
               onPlayMoodRadio={(bit, name) =>
                 handlePlaySmartMix('all', bit, name)
               }
@@ -1686,7 +1676,6 @@ export default function App() {
             <SearchView
               query={searchQuery}
               onQueryChange={setSearchQuery}
-              catalogCount={catalogCount}
               catalogVersion={catalogVersion}
               overlay={overlay}
               playlists={playlists}
@@ -1706,8 +1695,6 @@ export default function App() {
           <TrackListView
             headerType="liked"
             title="Titres likés"
-            subtitle="Vos morceaux favoris enregistrés localement dans votre navigateur"
-            ownerName="Vous"
             overlay={overlay}
             tracks={likedTracks}
             allPlaylists={playlists}
@@ -1736,9 +1723,7 @@ export default function App() {
         {activeView === 'all-tracks' && (
           <TrackListView
             headerType="all"
-            title="Catalogue Intégral"
-            subtitle="Explorez, filtrez par genre ou ambiance et lancez n'importe quel titre en entier"
-            ownerName="SpotLocal"
+            title="Catalogue"
             initialGenre={allTracksGenre}
             initialMoodBit={allTracksMoodBit}
             useCatalogEngine
@@ -1777,8 +1762,6 @@ export default function App() {
           <TrackListView
             headerType="artist"
             title={selectedArtist}
-            subtitle={`Tous les morceaux intégraux de ${selectedArtist}`}
-            ownerName="SpotLocal"
             artistFilter={selectedArtist}
             useCatalogEngine
             catalogVersion={catalogVersion}
@@ -1813,8 +1796,6 @@ export default function App() {
           <TrackListView
             headerType="playlist"
             title={selectedPlaylist.name}
-            subtitle={selectedPlaylist.description}
-            ownerName="Vous"
             coverUrl={selectedPlaylist.coverUrl}
             overlay={overlay}
             tracks={selectedPlaylistTracks}
@@ -1908,13 +1889,14 @@ export default function App() {
       {/* Mobile Bottom Navigation Dock (< lg) */}
       <nav
         aria-label="Navigation mobile"
-        className="lg:hidden h-14 bg-[#07080c]/98 backdrop-blur-xl border-t border-white/[0.08] grid grid-cols-5 items-center shrink-0 z-20"
+        style={{ backgroundColor: 'var(--player-bg)' }}
+        className="lg:hidden h-14 backdrop-blur-xl border-t border-[var(--border-panel)] grid grid-cols-5 items-center shrink-0 z-20"
       >
         <button
           type="button"
           onClick={goHome}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold cursor-pointer ${
-            activeView === 'home' ? 'text-[#1ED760]' : 'text-[#8b93a4]'
+            activeView === 'home' ? 'text-[var(--accent)]' : 'text-[var(--text-sub)]'
           }`}
         >
           <Home className="w-4 h-4" />
@@ -1924,7 +1906,7 @@ export default function App() {
           type="button"
           onClick={goSearch}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold cursor-pointer ${
-            activeView === 'search' ? 'text-[#1ED760]' : 'text-[#8b93a4]'
+            activeView === 'search' ? 'text-[var(--accent)]' : 'text-[var(--text-sub)]'
           }`}
         >
           <Search className="w-4 h-4" />
@@ -1934,7 +1916,7 @@ export default function App() {
           type="button"
           onClick={goMoods}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold cursor-pointer ${
-            activeView === 'moods' ? 'text-[#1ED760]' : 'text-[#8b93a4]'
+            activeView === 'moods' ? 'text-[var(--accent)]' : 'text-[var(--text-sub)]'
           }`}
         >
           <Radio className="w-4 h-4" />
@@ -1944,17 +1926,19 @@ export default function App() {
           type="button"
           onClick={() => goAllTracks('all', 0)}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold cursor-pointer ${
-            activeView === 'all-tracks' ? 'text-[#1ED760]' : 'text-[#8b93a4]'
+            activeView === 'all-tracks'
+              ? 'text-[var(--accent)]'
+              : 'text-[var(--text-sub)]'
           }`}
         >
           <Disc3 className="w-4 h-4" />
-          <span>{Math.round(catalogCount / 1000)}k</span>
+          <span>Catalogue</span>
         </button>
         <button
           type="button"
           onClick={goLiked}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-semibold cursor-pointer ${
-            activeView === 'liked' ? 'text-[#1ED760]' : 'text-[#8b93a4]'
+            activeView === 'liked' ? 'text-[var(--accent)]' : 'text-[var(--text-sub)]'
           }`}
         >
           <Heart className="w-4 h-4" />
@@ -1966,7 +1950,7 @@ export default function App() {
       {toastMessage && (
         <div
           role="status"
-          className="fixed bottom-26 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl bg-[#161c2e]/95 backdrop-blur-xl text-white text-xs sm:text-sm font-semibold shadow-2xl border border-[#1ED760]/40"
+          className="fixed bottom-26 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-[var(--bg-panel-solid)] text-[var(--text-main)] text-xs sm:text-sm font-semibold shadow-2xl border border-[var(--accent-border)] anim-modal"
         >
           {toastMessage}
         </div>
@@ -1997,8 +1981,6 @@ export default function App() {
         {showImportModal && (
           <LocalExeModal
             open={showImportModal}
-            localTrackCount={localTrackCount}
-            customTrackCount={customTracks.length}
             onClose={() => setShowImportModal(false)}
             onImportAudioFiles={handleImportAudioFiles}
             onExportBackupJson={handleExportBackupJson}
