@@ -15,7 +15,6 @@ import type {
   AudioSourceKind,
   Playlist,
   RepeatMode,
-  SearchResultTrack,
   SleepTimerOption,
   SpotLocalBackupData,
   Track,
@@ -25,8 +24,6 @@ import {
   formatTime,
   getNextTrackIndex,
   getPreviousTrackIndex,
-  isExpiredDeezerPreviewUrl,
-  isTransientSignedStreamUrl,
   matchLocalFilenameToTrack,
   parseAudioFilename,
 } from './utils/musicLogic';
@@ -38,7 +35,6 @@ import {
 import {
   hasLocalBackend,
   markLocalBackendAbsent,
-  resolvePreviewHybrid,
   resolveYouTubeMetadataClient,
 } from './utils/webCatalogSearch';
 import { resolvePublicAssetUrl } from './components/AlbumCover';
@@ -85,8 +81,8 @@ const KeyboardShortcutsModal = lazy(() =>
   }))
 );
 
-const STORAGE_USER_STATE_KEY = 'spotlocal_user_state_v2';
-const STORAGE_PLAYLISTS_KEY = 'spotlocal_playlists_v2';
+const STORAGE_USER_STATE_KEY = 'spotlocal_user_state_v3';
+const STORAGE_PLAYLISTS_KEY = 'spotlocal_playlists_v3';
 const STORAGE_VOLUME_KEY = 'spotlocal_volume_v1';
 
 interface PersistedUserState {
@@ -98,18 +94,15 @@ interface PersistedUserState {
 const SEED_IDS = new Set(SEED_TRACKS.map((t) => t.id));
 const SEED_MAP = new Map(SEED_TRACKS.map((t) => [t.id, t]));
 
-function detectStreamKind(url: string): 'deezer' | 'itunes' | 'stream' {
-  if (/dzcdn\.net|deezer\.com/i.test(url)) return 'deezer';
-  if (/mzstatic\.com|itunes\.apple\.com|apple\.com/i.test(url)) return 'itunes';
-  return 'stream';
-}
-
 function loadPersistedState(): {
   tracks: Track[];
   recentIds: string[];
 } {
   try {
+    // Purge legacy v1/v2 storage that contained pre-saved playlists or pre-liked tracks
     localStorage.removeItem('spotlocal_tracks_v1');
+    localStorage.removeItem('spotlocal_user_state_v2');
+    localStorage.removeItem('spotlocal_playlists_v2');
 
     const raw = localStorage.getItem(STORAGE_USER_STATE_KEY);
     if (!raw) {
@@ -118,33 +111,22 @@ function loadPersistedState(): {
     const parsed = JSON.parse(raw) as Partial<PersistedUserState>;
     const overrides = parsed.trackOverrides || {};
     const customTracks = Array.isArray(parsed.customTracks)
-      ? parsed.customTracks
-          .filter((t) => t && t.id)
-          .map((t) => ({
-            ...t,
-            previewUrl: isTransientSignedStreamUrl(t.previewUrl)
-              ? ''
-              : t.previewUrl || '',
-            fallbackPreviewUrl: isTransientSignedStreamUrl(t.fallbackPreviewUrl)
-              ? undefined
-              : t.fallbackPreviewUrl,
-          }))
+      ? parsed.customTracks.filter((t) => t && t.id)
       : [];
 
-    const hydratedSeeds = SEED_TRACKS.map((seed) => {
-      const ov = overrides[seed.id];
-      if (!ov) return seed;
-      return {
-        ...seed,
-        ...ov,
-        previewUrl: isTransientSignedStreamUrl(ov.previewUrl)
-          ? seed.previewUrl
-          : (ov.previewUrl ?? seed.previewUrl),
-      };
-    });
+    const hasAnyOverride = Object.keys(overrides).length > 0;
+    const hydratedSeeds = hasAnyOverride
+      ? SEED_TRACKS.map((seed) => {
+          const ov = overrides[seed.id];
+          return ov ? { ...seed, ...ov } : seed;
+        })
+      : SEED_TRACKS;
 
     return {
-      tracks: [...customTracks, ...hydratedSeeds],
+      tracks:
+        customTracks.length > 0
+          ? [...customTracks, ...hydratedSeeds]
+          : hydratedSeeds,
       recentIds: Array.isArray(parsed.recentTrackIds)
         ? parsed.recentTrackIds.slice(0, 15)
         : [],
@@ -159,7 +141,7 @@ function loadInitialPlaylists(): Playlist[] {
     const raw = localStorage.getItem(STORAGE_PLAYLISTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Playlist[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {
     // Ignore storage read failure
@@ -175,8 +157,9 @@ export default function App() {
   );
   const [playlists, setPlaylists] = useState<Playlist[]>(loadInitialPlaylists);
 
-  // Navigation State
-  const [activeView, setActiveView] = useState<ActiveView>('liked');
+  // First-time visitor experience starts on Home ("Accueil") with clean empty library
+  const [activeView, setActiveView] = useState<ActiveView>('home');
+  const [allTracksGenre, setAllTracksGenre] = useState<string>('all');
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(
     null
   );
@@ -186,9 +169,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [showQueuePanel, setShowQueuePanel] = useState<boolean>(
-    () => typeof window !== 'undefined' && window.innerWidth >= 1280
-  );
+  const [showQueuePanel, setShowQueuePanel] = useState<boolean>(false);
   const [videoDisplayMode, setVideoDisplayMode] =
     useState<VideoDisplayMode>('pip');
 
@@ -203,13 +184,9 @@ export default function App() {
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Playback State
-  const [queueIds, setQueueIds] = useState<string[]>(() =>
-    SEED_TRACKS.filter((t) => t.liked).map((t) => t.id)
-  );
-  const [currentTrackId, setCurrentTrackId] = useState<string | null>(
-    SEED_TRACKS[0]?.id ?? null
-  );
+  // Playback State (idle on first visit until user clicks a song)
+  const [queueIds, setQueueIds] = useState<string[]>([]);
+  const [currentTrackId, setCurrentTrackId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
@@ -217,11 +194,9 @@ export default function App() {
   const [currentTimeSec, setCurrentTimeSec] = useState(0);
   const [durationSec, setDurationSec] = useState(0);
 
-  // Ref mirror of playback timestamps so keyboard/MediaSession hooks never re-bind 4x/sec
   const playbackTimeRef = useRef({ currentSec: 0, durationSec: 0 });
-  const streamRetryRef = useRef<string | null>(null);
 
-  // Hybrid Audio Source State
+  // Full-Length Audio Source State (Local MP3 or YouTube IFrame)
   const [activeAudioSource, setActiveAudioSource] =
     useState<AudioSourceKind>('none');
   const [activeYtVideoId, setActiveYtVideoId] = useState<string | null>(null);
@@ -247,6 +222,15 @@ export default function App() {
   const playbackRequestIdRef = useRef(0);
   const createdBlobUrlsRef = useRef<string[]>([]);
   const toastTimerRef = useRef<number | null>(null);
+
+  const trackMap = useMemo(() => {
+    const map = new Map<string, Track>();
+    for (const t of tracks) map.set(t.id, t);
+    return map;
+  }, [tracks]);
+
+  const trackMapRef = useRef<Map<string, Track>>(trackMap);
+  trackMapRef.current = trackMap;
 
   const updateCurrentTimeThrottled = useCallback((sec: number) => {
     playbackTimeRef.current.currentSec = sec;
@@ -274,7 +258,7 @@ export default function App() {
     };
   }, []);
 
-  // Lightweight delta persistence (~2-5 KB, never persists expiring dzcdn signed URLs)
+  // Minimal delta persistence (~100 bytes on clean state; only stores actual user diffs)
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
@@ -284,15 +268,15 @@ export default function App() {
         for (const t of tracks) {
           if (SEED_IDS.has(t.id)) {
             const orig = SEED_MAP.get(t.id);
+            if (!orig) continue;
             const diff: Partial<Track> = {};
-            if (orig && orig.liked !== t.liked) diff.liked = t.liked;
-            if (t.youtubeVideoIds && t.youtubeVideoIds.length > 0) {
+            if (orig.liked !== t.liked) diff.liked = t.liked;
+            if (
+              t.youtubeVideoIds &&
+              t.youtubeVideoIds[0] !== orig.youtubeVideoIds?.[0]
+            ) {
               diff.youtubeVideoIds = t.youtubeVideoIds;
-            }
-            if (t.deezerId) diff.deezerId = t.deezerId;
-            if (t.itunesId) diff.itunesId = t.itunesId;
-            if (t.previewUrl && !isTransientSignedStreamUrl(t.previewUrl)) {
-              diff.previewUrl = t.previewUrl;
+              diff.coverUrl = t.coverUrl;
             }
             if (t.localFileKey) {
               diff.localFileKey = t.localFileKey;
@@ -305,14 +289,6 @@ export default function App() {
           } else {
             customTracks.push({
               ...t,
-              previewUrl: isTransientSignedStreamUrl(t.previewUrl)
-                ? ''
-                : t.previewUrl,
-              fallbackPreviewUrl: isTransientSignedStreamUrl(
-                t.fallbackPreviewUrl
-              )
-                ? undefined
-                : t.fallbackPreviewUrl,
               localServerUrl: undefined,
             });
           }
@@ -327,7 +303,7 @@ export default function App() {
       } catch {
         // Ignore quota errors
       }
-    }, 250);
+    }, 300);
 
     return () => window.clearTimeout(timer);
   }, [tracks, recentTrackIds]);
@@ -351,7 +327,7 @@ export default function App() {
     }
   }, [volume, isMuted]);
 
-  // Auto-scan server /music folder once on boot (works in local Node/Electron mode; skipped on static hosts like GitHub Pages)
+  // Auto-scan server /music folder once on boot (works in local Node/Electron mode; skipped on GitHub Pages)
   useEffect(() => {
     if (!hasLocalBackend()) return;
     let cancelled = false;
@@ -401,10 +377,10 @@ export default function App() {
                     addedAt: 'Dossier /music',
                     durationSec: 210,
                     durationLabel: '3:30',
-                    coverUrl: '/covers/track-1.jpg',
+                    coverUrl: '',
                     previewUrl: '',
                     explicit: false,
-                    liked: true,
+                    liked: false,
                     localServerUrl: file.url,
                     sourceKind: 'local-folder',
                   });
@@ -474,13 +450,6 @@ export default function App() {
     [showToast]
   );
 
-  // Fast lookup map
-  const trackMap = useMemo(() => {
-    const map = new Map<string, Track>();
-    for (const t of tracks) map.set(t.id, t);
-    return map;
-  }, [tracks]);
-
   const likedTracks = useMemo(() => tracks.filter((t) => t.liked), [tracks]);
   const recentTracks = useMemo(
     () =>
@@ -523,70 +492,25 @@ export default function App() {
     const idx = queueIds.indexOf(currentTrackId);
     const orderedIds =
       idx >= 0
-        ? [...queueIds.slice(idx + 1), ...queueIds.slice(0, idx)]
-        : queueIds;
+        ? [
+            ...queueIds.slice(idx + 1, idx + 31),
+            ...(queueIds.length - (idx + 1) < 30
+              ? queueIds.slice(0, Math.min(idx, 30 - (queueIds.length - (idx + 1))))
+              : []),
+          ]
+        : queueIds.slice(0, 30);
     return orderedIds
       .map((id) => trackMap.get(id))
       .filter((t): t is Track => Boolean(t));
   }, [queueIds, currentTrackId, trackMap]);
 
-  // Background Next-Track Stream Prefetching (zero-latency skip)
-  useEffect(() => {
-    if (!isPlaying) return;
-    const nextUp = upcomingTracks[0];
-    if (
-      !nextUp ||
-      nextUp.localFileKey ||
-      nextUp.localServerUrl ||
-      (nextUp.youtubeVideoIds && nextUp.youtubeVideoIds.length > 0) ||
-      (nextUp.previewUrl && !isExpiredDeezerPreviewUrl(nextUp.previewUrl))
-    ) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      const q =
-        nextUp.searchQuery ||
-        `${nextUp.artist.split(',')[0]} ${nextUp.title}`;
-      resolvePreviewHybrid({
-        query: q,
-        deezerId: nextUp.deezerId,
-        itunesId: nextUp.itunesId,
-      })
-        .then((res) => {
-          if (!res.previewUrl) return;
-          setTracks((prev) =>
-            prev.map((t) =>
-              t.id === nextUp.id
-                ? {
-                    ...t,
-                    previewUrl: res.previewUrl,
-                    fallbackPreviewUrl:
-                      res.fallbackPreviewUrl || t.fallbackPreviewUrl,
-                    deezerId: res.deezerId ?? t.deezerId,
-                    itunesId: res.itunesId ?? t.itunesId,
-                    coverUrl: t.coverUrl || res.coverUrl,
-                  }
-                : t
-            )
-          );
-        })
-        .catch(() => {
-          // Ignore background prefetch errors
-        });
-    }, 3000);
-
-    return () => window.clearTimeout(timer);
-  }, [isPlaying, currentTrackId, upcomingTracks]);
-
-  // Race-free Hybrid Audio Engine (MP3 Local -> YouTube -> Parallel Apple iTunes & Deezer)
+  // Full-Length Playback Engine (1. Local IndexedDB MP3 -> 2. Local Folder MP3 -> 3. YouTube IFrame)
   const startPlaybackForTrack = useCallback(
     async (track: Track) => {
       const requestId = ++playbackRequestIdRef.current;
       const audio = audioRef.current;
       if (!audio) return;
 
-      streamRetryRef.current = null;
       setCurrentTrackId(track.id);
       playbackTimeRef.current = { currentSec: 0, durationSec: track.durationSec };
       setCurrentTimeSec(0);
@@ -645,10 +569,9 @@ export default function App() {
         return;
       }
 
-      // Pause HTML5 <audio> before checking YouTube or Apple/Deezer stream
       audio.pause();
 
-      // 2. Attached YouTube Video ID -> Instant Zero-Key YouTube IFrame Playback
+      // 2. Full-Length YouTube IFrame Playback
       let ytCandidates = track.youtubeVideoIds || [];
 
       if (ytCandidates.length === 0 && hasLocalBackend()) {
@@ -672,14 +595,14 @@ export default function App() {
             }
           }
         } catch {
-          // Ignore and proceed to Apple iTunes + Deezer
+          // Ignore
         }
       }
 
       if (requestId !== playbackRequestIdRef.current) return;
+      setIsLoadingAudio(false);
 
       if (ytCandidates.length > 0) {
-        setIsLoadingAudio(false);
         setYtCandidateIndex(0);
         setActiveYtVideoId(ytCandidates[0]);
         setActiveAudioSource('youtube');
@@ -688,142 +611,19 @@ export default function App() {
         return;
       }
 
-      // 3. Parallel Apple iTunes (CORS) + Deezer (JSONP) Audio Stream
-      let resolvedUrl = track.previewUrl;
-      if (resolvedUrl && isExpiredDeezerPreviewUrl(resolvedUrl)) {
-        resolvedUrl = '';
-      }
-
-      if (!resolvedUrl) {
-        setIsLoadingAudio(true);
-        const query =
-          track.searchQuery || `${track.artist.split(',')[0]} ${track.title}`;
-        const resolved = await resolvePreviewHybrid({
-          query,
-          deezerId: track.deezerId,
-          itunesId: track.itunesId,
-        });
-
-        if (requestId !== playbackRequestIdRef.current) return;
-
-        if (resolved.previewUrl) {
-          resolvedUrl = resolved.previewUrl;
-          setTracks((prev) =>
-            prev.map((t) =>
-              t.id === track.id
-                ? {
-                    ...t,
-                    previewUrl: resolved.previewUrl,
-                    fallbackPreviewUrl:
-                      resolved.fallbackPreviewUrl || t.fallbackPreviewUrl,
-                    deezerId: resolved.deezerId ?? t.deezerId,
-                    itunesId: resolved.itunesId ?? t.itunesId,
-                    coverUrl: t.coverUrl || resolved.coverUrl,
-                  }
-                : t
-            )
-          );
-        }
-      }
-
-      setIsLoadingAudio(false);
-
-      if (!resolvedUrl) {
-        setIsPlaying(false);
-        setActiveAudioSource('none');
-        showToast(
-          `Aucun flux trouvé pour « ${track.title} » — collez un lien YouTube via le menu (•••) !`
-        );
-        return;
-      }
-
-      setActiveYtVideoId(null);
-      setActiveAudioSource(detectStreamKind(resolvedUrl));
-      audio.src = resolvedUrl;
-      audio.volume = isMuted ? 0 : volume;
-
-      try {
-        await audio.play();
-        if (requestId === playbackRequestIdRef.current) {
-          setIsPlaying(true);
-        }
-      } catch {
-        if (requestId === playbackRequestIdRef.current) {
-          setIsPlaying(false);
-          showToast('Cliquez sur Lecture pour lancer l’audio.');
-        }
-      }
+      setIsPlaying(false);
+      setActiveAudioSource('none');
+      showToast(
+        `Aucun lien YouTube sur « ${track.title} » — associez-en un via le menu (•••).`
+      );
     },
     [isMuted, volume, showToast]
   );
 
-  // Auto-healing <audio> stream error handler (switches between Apple & Deezer on CDN/token failure)
-  const handleAudioStreamError = useCallback(async () => {
-    if (
-      activeAudioSource === 'youtube' ||
-      activeAudioSource === 'local-idb' ||
-      activeAudioSource === 'local-folder' ||
-      !currentTrackId
-    ) {
-      return;
-    }
-
-    const track = tracksRef.current.find((t) => t.id === currentTrackId);
-    const audio = audioRef.current;
-    if (!track || !audio) return;
-
-    // Prevent infinite retry loops on the same track
-    if (streamRetryRef.current === track.id) {
-      setIsPlaying(false);
-      return;
-    }
-    streamRetryRef.current = track.id;
-
-    // 1. Try pre-resolved secondary stream (e.g. Apple <-> Deezer) if valid
-    if (
-      track.fallbackPreviewUrl &&
-      track.fallbackPreviewUrl !== audio.src &&
-      !isExpiredDeezerPreviewUrl(track.fallbackPreviewUrl)
-    ) {
-      setActiveAudioSource(detectStreamKind(track.fallbackPreviewUrl));
-      audio.src = track.fallbackPreviewUrl;
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-      return;
-    }
-
-    // 2. Refresh fresh URL from Apple iTunes + Deezer APIs
-    const query =
-      track.searchQuery || `${track.artist.split(',')[0]} ${track.title}`;
-    const refreshed = await resolvePreviewHybrid({
-      query,
-      deezerId: track.deezerId,
-      itunesId: track.itunesId,
-    });
-
-    if (refreshed.previewUrl && refreshed.previewUrl !== audio.src) {
-      setTracks((prev) =>
-        prev.map((t) =>
-          t.id === track.id ? { ...t, previewUrl: refreshed.previewUrl } : t
-        )
-      );
-      setActiveAudioSource(detectStreamKind(refreshed.previewUrl));
-      audio.src = refreshed.previewUrl;
-      audio
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-    } else {
-      setIsPlaying(false);
-    }
-  }, [activeAudioSource, currentTrackId]);
-
-  // Automatic fallback if an embedded YouTube video is restricted by its label
-  const handleYouTubeUnavailable = useCallback(async () => {
+  // Automatic failover to secondary YouTube ID if primary video restricts third-party embedding
+  const handleYouTubeUnavailable = useCallback(() => {
     if (!currentTrackId) return;
-    const track = tracksRef.current.find((t) => t.id === currentTrackId);
+    const track = trackMapRef.current.get(currentTrackId);
     if (!track) return;
 
     const candidates = track.youtubeVideoIds || [];
@@ -835,44 +635,25 @@ export default function App() {
     }
 
     setActiveYtVideoId(null);
-    let previewUrl =
-      track.previewUrl && !isExpiredDeezerPreviewUrl(track.previewUrl)
-        ? track.previewUrl
-        : '';
-
-    if (!previewUrl) {
-      const resolved = await resolvePreviewHybrid({
-        query: `${track.artist.split(',')[0]} ${track.title}`,
-        deezerId: track.deezerId,
-        itunesId: track.itunesId,
-      });
-      previewUrl = resolved.previewUrl;
-    }
-
-    if (previewUrl && audioRef.current) {
-      setActiveAudioSource(detectStreamKind(previewUrl));
-      audioRef.current.src = previewUrl;
-      audioRef.current.volume = isMuted ? 0 : volume;
-      audioRef.current
-        .play()
-        .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
-      showToast(
-        'Intégration YouTube restreinte par le label — bascule sur aperçu Apple/Deezer.'
-      );
-    } else {
-      setActiveAudioSource('none');
-      setIsPlaying(false);
-      showToast(
-        'Cette vidéo refuse l’intégration externe — essayez un lien « Topic / Lyrics » YouTube.'
-      );
-    }
-  }, [currentTrackId, ytCandidateIndex, isMuted, volume, showToast]);
+    setActiveAudioSource('none');
+    setIsPlaying(false);
+    showToast(
+      `Le label de « ${track.title} » limite l’intégration externe — essayez un autre titre ou collez un lien « Lyrics / Topic » via l’icône lien.`
+    );
+  }, [currentTrackId, ytCandidateIndex, showToast]);
 
   const handlePlayTrack = useCallback(
     (track: Track, contextQueue?: Track[]) => {
       if (contextQueue && contextQueue.length > 0) {
-        setQueueIds(contextQueue.map((t) => t.id));
+        // Cap active queue slice around the selected track if contextQueue is huge
+        if (contextQueue.length > 500) {
+          const idx = contextQueue.findIndex((t) => t.id === track.id);
+          const start = Math.max(0, idx - 50);
+          const windowSlice = contextQueue.slice(start, start + 400);
+          setQueueIds(windowSlice.map((t) => t.id));
+        } else {
+          setQueueIds(contextQueue.map((t) => t.id));
+        }
       } else if (!queueIds.includes(track.id)) {
         setQueueIds((prev) => [track.id, ...prev]);
       }
@@ -916,8 +697,7 @@ export default function App() {
 
   const handleTogglePlay = useCallback(() => {
     if (!currentTrack) {
-      if (likedTracks[0]) handlePlayTrack(likedTracks[0], likedTracks);
-      else if (tracks[0]) handlePlayTrack(tracks[0], tracks);
+      if (tracks[0]) handlePlayTrack(tracks[0], tracks.slice(0, 200));
       return;
     }
 
@@ -952,7 +732,6 @@ export default function App() {
     activeAudioSource,
     activeYtVideoId,
     isPlaying,
-    likedTracks,
     tracks,
     handlePlayTrack,
     startPlaybackForTrack,
@@ -971,9 +750,7 @@ export default function App() {
       setIsPlaying(false);
       return;
     }
-    const nextTrack = tracksRef.current.find(
-      (t) => t.id === queueIds[nextIdx]
-    );
+    const nextTrack = trackMapRef.current.get(queueIds[nextIdx]);
     if (nextTrack) startPlaybackForTrack(nextTrack);
   }, [queueIds, currentTrackId, isShuffle, repeatMode, startPlaybackForTrack]);
 
@@ -996,9 +773,7 @@ export default function App() {
       repeatMode
     );
     if (prevIdx < 0) return;
-    const prevTrack = tracksRef.current.find(
-      (t) => t.id === queueIds[prevIdx]
-    );
+    const prevTrack = trackMapRef.current.get(queueIds[prevIdx]);
     if (prevTrack) startPlaybackForTrack(prevTrack);
   }, [
     activeAudioSource,
@@ -1038,9 +813,7 @@ export default function App() {
       setIsPlaying(false);
       return;
     }
-    const nextTrack = tracksRef.current.find(
-      (t) => t.id === queueIds[nextIdx]
-    );
+    const nextTrack = trackMapRef.current.get(queueIds[nextIdx]);
     if (nextTrack) startPlaybackForTrack(nextTrack);
   }, [
     sleepOption,
@@ -1094,7 +867,7 @@ export default function App() {
     (playlistId: string) => {
       const target = playlists.find((p) => p.id === playlistId);
       setPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
-      setActiveView('liked');
+      setActiveView('home');
       setSelectedPlaylistId(null);
       if (target) showToast(`Playlist « ${target.name} » supprimée.`);
     },
@@ -1165,10 +938,10 @@ export default function App() {
             addedTracks.push(updated[existingIdx]);
           } else {
             const newTrack: Track = {
-              id: `yt-${draft.videoId}`,
+              id: `yt-custom-${draft.videoId}`,
               title: draft.title,
               artist: draft.artist,
-              album: 'YouTube Share',
+              album: 'Import YouTube',
               genre: 'YouTube',
               addedAt: "Aujourd'hui",
               durationSec: 210,
@@ -1207,12 +980,12 @@ export default function App() {
           ...prev.filter((id) => !addedTracks.some((a) => a.id === id)),
         ]);
         startPlaybackForTrack(first);
-        showToast(`Lecture YouTube : « ${first.title} »`);
+        showToast(`Lecture YouTube intégrale : « ${first.title} »`);
       } else {
         showToast(
           addedTracks.length === 1
-            ? `« ${addedTracks[0].title} » ajouté avec son lien YouTube.`
-            : `${addedTracks.length} titres YouTube ajoutés à la bibliothèque.`
+            ? `« ${addedTracks[0].title} » ajouté à vos musiques.`
+            : `${addedTracks.length} titres YouTube ajoutés.`
         );
       }
     },
@@ -1227,7 +1000,7 @@ export default function App() {
           if (t.id !== trackId) return t;
           updatedTrack = {
             ...t,
-            coverUrl: t.coverUrl || coverUrl || '',
+            coverUrl: coverUrl || t.coverUrl || '',
             youtubeVideoIds: [
               videoId,
               ...(t.youtubeVideoIds || []).filter((id) => id !== videoId),
@@ -1241,7 +1014,7 @@ export default function App() {
       if (updatedTrack && currentTrackId === trackId) {
         startPlaybackForTrack(updatedTrack);
       }
-      showToast('Lien YouTube associé au titre avec succès !');
+      showToast('Lien YouTube mis à jour avec succès !');
     },
     [currentTrackId, startPlaybackForTrack, showToast]
   );
@@ -1266,75 +1039,6 @@ export default function App() {
       );
     },
     [handleAddYouTubeDrafts, showToast]
-  );
-
-  // Search Result Actions (Apple iTunes & Deezer)
-  const convertSearchResultToTrack = (
-    item: SearchResultTrack,
-    liked: boolean
-  ): Track => ({
-    id: item.externalId,
-    title: item.title,
-    artist: item.artist,
-    album: item.album,
-    genre: item.genre,
-    releaseYear: item.releaseYear,
-    addedAt: "Aujourd'hui",
-    durationSec: item.durationSec,
-    durationLabel: item.durationLabel,
-    coverUrl: item.coverUrl,
-    previewUrl: item.previewUrl,
-    fallbackPreviewUrl: item.fallbackPreviewUrl,
-    deezerId: item.deezerId,
-    itunesId: item.itunesId,
-    explicit: item.explicit,
-    liked,
-    youtubeVideoIds: item.youtubeVideoId ? [item.youtubeVideoId] : undefined,
-    sourceKind: item.youtubeVideoId
-      ? 'youtube'
-      : item.source === 'deezer'
-        ? 'deezer'
-        : 'itunes',
-  });
-
-  const handlePlaySearchResult = useCallback(
-    (item: SearchResultTrack) => {
-      const existing = tracksRef.current.find((t) => t.id === item.externalId);
-      const track = existing
-        ? {
-            ...existing,
-            previewUrl: item.previewUrl || existing.previewUrl,
-            fallbackPreviewUrl:
-              item.fallbackPreviewUrl || existing.fallbackPreviewUrl,
-            deezerId: item.deezerId ?? existing.deezerId,
-            itunesId: item.itunesId ?? existing.itunesId,
-          }
-        : convertSearchResultToTrack(item, false);
-      if (!existing) {
-        setTracks((prev) => [track, ...prev]);
-      }
-      handlePlayTrack(track);
-    },
-    [handlePlayTrack]
-  );
-
-  const handleAddSearchResultToLibrary = useCallback(
-    (item: SearchResultTrack, playlistId?: string) => {
-      const exists = tracksRef.current.find((t) => t.id === item.externalId);
-      if (!exists) {
-        const newTrack = convertSearchResultToTrack(item, !playlistId);
-        setTracks((prev) => [newTrack, ...prev]);
-      } else if (!playlistId && !exists.liked) {
-        handleToggleLike(exists.id);
-      }
-
-      if (playlistId) {
-        handleAddTrackToPlaylist(item.externalId, playlistId);
-      } else {
-        showToast(`« ${item.title} » ajouté aux Titres likés.`);
-      }
-    },
-    [handleAddTrackToPlaylist, handleToggleLike, showToast]
   );
 
   // Persistent Browser MP3 Import via IndexedDB
@@ -1399,22 +1103,6 @@ export default function App() {
             localFileKey: fileKey,
             sourceKind: 'local-idb',
           });
-
-          // Auto-enrich cover art from Apple Music / Deezer in the background
-          if (meta.artist !== 'Fichier local') {
-            resolvePreviewHybrid({ query: `${meta.artist} ${meta.title}` })
-              .then((res) => {
-                if (!res.coverUrl) return;
-                setTracks((prev) =>
-                  prev.map((t) =>
-                    t.id === newId ? { ...t, coverUrl: res.coverUrl } : t
-                  )
-                );
-              })
-              .catch(() => {
-                // Keep gradient fallback cover
-              });
-          }
         }
       }
 
@@ -1438,19 +1126,20 @@ export default function App() {
     for (const t of tracks) {
       if (SEED_IDS.has(t.id)) {
         const orig = SEED_MAP.get(t.id);
+        if (!orig) continue;
         const diff: Partial<Track> = {};
-        if (orig && orig.liked !== t.liked) diff.liked = t.liked;
-        if (t.youtubeVideoIds?.length) diff.youtubeVideoIds = t.youtubeVideoIds;
-        if (t.deezerId) diff.deezerId = t.deezerId;
-        if (t.itunesId) diff.itunesId = t.itunesId;
+        if (orig.liked !== t.liked) diff.liked = t.liked;
+        if (
+          t.youtubeVideoIds &&
+          t.youtubeVideoIds[0] !== orig.youtubeVideoIds?.[0]
+        ) {
+          diff.youtubeVideoIds = t.youtubeVideoIds;
+          diff.coverUrl = t.coverUrl;
+        }
         if (Object.keys(diff).length > 0) trackOverrides[t.id] = diff;
       } else {
         customTracks.push({
           ...t,
-          previewUrl: isTransientSignedStreamUrl(t.previewUrl)
-            ? ''
-            : t.previewUrl,
-          fallbackPreviewUrl: undefined,
           localFileKey: undefined,
           localServerUrl: undefined,
         });
@@ -1498,7 +1187,7 @@ export default function App() {
         });
 
         setTracks([...custom, ...restoredSeeds]);
-        if (Array.isArray(parsed.playlists) && parsed.playlists.length > 0) {
+        if (Array.isArray(parsed.playlists)) {
           setPlaylists(parsed.playlists);
         }
         if (Array.isArray(parsed.recentTrackIds)) {
@@ -1521,13 +1210,18 @@ export default function App() {
     localStorage.removeItem(STORAGE_USER_STATE_KEY);
     localStorage.removeItem(STORAGE_PLAYLISTS_KEY);
     setTracks(SEED_TRACKS);
-    setPlaylists(DEFAULT_PLAYLISTS);
+    setPlaylists([]);
     setRecentTrackIds([]);
-    setActiveView('liked');
+    setCurrentTrackId(null);
+    setQueueIds([]);
+    setIsPlaying(false);
+    setActiveAudioSource('none');
+    setActiveYtVideoId(null);
+    setActiveView('home');
     setSelectedPlaylistId(null);
     setSelectedArtist(null);
     setShowImportModal(false);
-    showToast('Bibliothèque réinitialisée aux valeurs par défaut.');
+    showToast('Site remis à zéro comme lors d’une première visite.');
   }, [showToast]);
 
   // Global Drag-and-Drop MP3 Handler
@@ -1560,10 +1254,13 @@ export default function App() {
     setVideoDisplayMode('hidden');
   }, []);
 
-  // Stable UI modal & navigation callbacks (prevents breaking React.memo on children)
+  // Stable UI modal & navigation callbacks
   const goHome = useCallback(() => setActiveView('home'), []);
   const goLiked = useCallback(() => setActiveView('liked'), []);
-  const goAllTracks = useCallback(() => setActiveView('all-tracks'), []);
+  const goAllTracks = useCallback((genre?: string) => {
+    setAllTracksGenre(typeof genre === 'string' ? genre : 'all');
+    setActiveView('all-tracks');
+  }, []);
   const goSearch = useCallback(() => setActiveView('search'), []);
   const openPlaylistView = useCallback((id: string) => {
     setSelectedPlaylistId(id);
@@ -1598,7 +1295,7 @@ export default function App() {
     setQueueIds((prev) => prev.filter((qId) => qId !== id));
   }, []);
 
-  // Media Session API (only updates when currentTrack or handlers change — NOT 4x/sec)
+  // Media Session API
   useEffect(() => {
     if (!('mediaSession' in navigator) || !currentTrack) return;
     try {
@@ -1620,7 +1317,7 @@ export default function App() {
     }
   }, [currentTrack, handleTogglePlay, handlePrev, handleNext]);
 
-  // Global Web Keyboard Shortcuts (reads playbackTimeRef so listener is NOT rebound 4x/sec)
+  // Global Web Keyboard Shortcuts
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -1727,7 +1424,7 @@ export default function App() {
       onDrop={handleDrop}
       className="h-screen w-screen overflow-hidden bg-black text-white flex flex-col select-none relative"
     >
-      {/* Hidden HTML5 Audio Engine for local MP3s & Apple/Deezer streams */}
+      {/* Hidden HTML5 Audio Engine for local MP3s */}
       <audio
         ref={audioRef}
         preload="metadata"
@@ -1760,10 +1457,9 @@ export default function App() {
             setIsPlaying(true);
           }
         }}
-        onError={handleAudioStreamError}
       />
 
-      {/* Persistent Zero-Reparenting YouTube IFrame Host */}
+      {/* Persistent Visible YouTube IFrame Host */}
       <YouTubePlayerHost
         videoId={activeYtVideoId}
         active={activeAudioSource === 'youtube'}
@@ -1825,7 +1521,7 @@ export default function App() {
           playlists={playlists}
           tracks={tracks}
           onSelectLiked={goLiked}
-          onSelectAllTracks={goAllTracks}
+          onSelectAllTracks={() => goAllTracks('all')}
           onSelectArtist={openArtistView}
           onSelectPlaylist={openPlaylistView}
           onCreatePlaylist={openCreatePlaylist}
@@ -1852,9 +1548,9 @@ export default function App() {
               onOpenLiked={goLiked}
               onOpenAllTracks={goAllTracks}
               onOpenPlaylist={openPlaylistView}
+              onCreatePlaylist={openCreatePlaylist}
               onPlayTrack={handlePlayTrack}
-              onPlaySearchResult={handlePlaySearchResult}
-              onAddSearchResultToLibrary={handleAddSearchResultToLibrary}
+              onToggleLike={handleToggleLike}
               onQuickPasteYouTubeUrl={handleQuickPasteYouTubeUrl}
               onOpenYouTubeModal={openYouTubeAddModal}
               onOpenImportModal={openImportModal}
@@ -1870,8 +1566,8 @@ export default function App() {
               currentTrackId={currentTrackId}
               isPlaying={isPlaying}
               onPlayLibraryTrack={handlePlayTrack}
-              onPlaySearchResult={handlePlaySearchResult}
-              onAddSearchResultToLibrary={handleAddSearchResultToLibrary}
+              onToggleLike={handleToggleLike}
+              onAddTrackToPlaylist={handleAddTrackToPlaylist}
               onAddYouTubeDrafts={handleAddYouTubeDrafts}
               onOpenYouTubeModal={openYouTubeAddModal}
             />
@@ -1882,7 +1578,7 @@ export default function App() {
           <TrackListView
             headerType="liked"
             title="Titres likés"
-            ownerName="SpotLocal"
+            ownerName="Vous"
             tracks={likedTracks}
             allPlaylists={playlists}
             currentTrackId={currentTrackId}
@@ -1906,16 +1602,18 @@ export default function App() {
             onAttachYouTubeLink={openYouTubeAttachModal}
             onSelectArtist={openArtistView}
             onOpenImportModal={openImportModal}
+            onExploreCatalog={() => goAllTracks('all')}
           />
         )}
 
         {activeView === 'all-tracks' && (
           <TrackListView
             headerType="all"
-            title="Toutes les musiques"
-            subtitle="L’intégralité de votre catalogue local, liens YouTube et sélections"
+            title="Catalogue intégral"
+            subtitle="Clips et morceaux complets via YouTube + vos fichiers MP3 locaux"
             ownerName="SpotLocal"
             coverUrl={tracks[0]?.coverUrl}
+            initialGenre={allTracksGenre}
             tracks={tracks}
             allPlaylists={playlists}
             currentTrackId={currentTrackId}
@@ -1943,7 +1641,7 @@ export default function App() {
           <TrackListView
             headerType="artist"
             title={selectedArtist}
-            subtitle={`Titres de ${selectedArtist} dans votre bibliothèque`}
+            subtitle={`Titres intégraux de ${selectedArtist}`}
             ownerName="SpotLocal"
             coverUrl={selectedArtistTracks[0]?.coverUrl}
             tracks={selectedArtistTracks}
@@ -1977,7 +1675,7 @@ export default function App() {
             headerType="playlist"
             title={selectedPlaylist.name}
             subtitle={selectedPlaylist.description}
-            ownerName="SpotLocal"
+            ownerName="Vous"
             coverUrl={selectedPlaylist.coverUrl}
             tracks={selectedPlaylistTracks}
             allPlaylists={playlists}
@@ -2010,6 +1708,7 @@ export default function App() {
             onAttachYouTubeLink={openYouTubeAttachModal}
             onSelectArtist={openArtistView}
             onOpenImportModal={openImportModal}
+            onExploreCatalog={() => goAllTracks('all')}
           />
         )}
 
@@ -2107,7 +1806,7 @@ export default function App() {
         </button>
         <button
           type="button"
-          onClick={goAllTracks}
+          onClick={() => goAllTracks('all')}
           className={`flex flex-col items-center justify-center gap-0.5 py-1.5 text-[10px] font-medium cursor-pointer ${
             activeView === 'all-tracks' ? 'text-white' : 'text-[#9e9e9e]'
           }`}
@@ -2135,7 +1834,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Lazy-Loaded Modals (only downloaded when opened) */}
+      {/* Lazy-Loaded Modals */}
       <Suspense fallback={null}>
         {showYouTubeModal && (
           <YouTubeLinkModal

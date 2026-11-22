@@ -1,7 +1,7 @@
 {
-  "name": "SpotLocal — Lecteur Musical Web & Local",
+  "name": "SpotLocal — Lecteur Musical Web Intégral",
   "short_name": "SpotLocal",
-  "description": "Lecteur musical Web open-source sans clé API : MP3 locaux, liens YouTube, Apple Music & Deezer.",
+  "description": "Lecteur musical Web open-source sans clé API : +5 000 musiques intégrales via YouTube et fichiers MP3 locaux.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

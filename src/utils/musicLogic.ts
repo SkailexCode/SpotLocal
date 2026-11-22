@@ -1,9 +1,4 @@
-import type {
-  RepeatMode,
-  SearchResultTrack,
-  SortKey,
-  Track,
-} from '../types/music';
+import type { RepeatMode, SortKey, Track } from '../types/music';
 
 /**
  * Formats seconds as M:SS (e.g., 190 -> "3:10").
@@ -30,7 +25,8 @@ export function normalizeText(value: string): string {
 }
 
 /**
- * Filters a list of tracks by title, artist, album, or genre, plus optional exact genre filter.
+ * Filters a list of tracks by multi-word accent-insensitive query across title, artist, album, and genre,
+ * plus optional exact genre filter.
  */
 export function filterTracks(
   tracks: Track[],
@@ -43,12 +39,69 @@ export function filterTracks(
       : tracks;
   const q = normalizeText(query);
   if (!q) return byGenre;
+  const words = q.split(' ').filter(Boolean);
   return byGenre.filter((track) => {
     const haystack = normalizeText(
       `${track.title} ${track.artist} ${track.album} ${track.genre || ''}`
     );
-    return haystack.includes(q);
+    return words.every((w) => haystack.includes(w));
   });
+}
+
+/**
+ * Searches and ranks tracks from the catalog by relevance against a user query.
+ */
+export function searchRankedTracks(
+  tracks: Track[],
+  query: string,
+  limit = 120
+): Track[] {
+  const q = normalizeText(query);
+  if (!q) return [];
+  const words = q.split(' ').filter(Boolean);
+
+  const scored: Array<{ track: Track; score: number }> = [];
+
+  for (const track of tracks) {
+    const normTitle = normalizeText(track.title);
+    const normArtist = normalizeText(track.artist);
+    const normAlbum = normalizeText(track.album);
+    const normGenre = normalizeText(track.genre || '');
+    const haystack = `${normTitle} ${normArtist} ${normAlbum} ${normGenre}`;
+
+    // Require all words (or at least 1 if OR-style multi-artist topic pill)
+    const matchedWords = words.filter((w) => haystack.includes(w)).length;
+    if (matchedWords === 0) continue;
+    if (words.length <= 3 && matchedWords < words.length) continue;
+
+    let score = matchedWords * 20;
+    if (
+      `${normArtist} ${normTitle}` === q ||
+      `${normTitle} ${normArtist}` === q
+    ) {
+      score += 120;
+    } else if (normTitle === q) {
+      score += 90;
+    } else if (normArtist === q) {
+      score += 85;
+    } else if (normTitle.startsWith(q)) {
+      score += 55;
+    } else if (normArtist.startsWith(q)) {
+      score += 50;
+    } else if (normTitle.includes(q)) {
+      score += 35;
+    } else if (normArtist.includes(q)) {
+      score += 30;
+    }
+
+    if (track.liked) score += 10;
+    if (track.localFileKey || track.localServerUrl) score += 15;
+
+    scored.push({ track, score });
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, limit).map((s) => s.track);
 }
 
 /**
@@ -81,7 +134,7 @@ export function totalDurationLabel(tracks: Track[]): string {
   const hours = Math.floor(totalSec / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);
   if (hours > 0) {
-    return `${hours} h ${mins.toString().padStart(2, '0')} min`;
+    return `${hours.toLocaleString('fr-FR')} h ${mins.toString().padStart(2, '0')} min`;
   }
   const secs = totalSec % 60;
   return `${mins} min ${secs} s`;
@@ -134,7 +187,10 @@ export function getPreviousTrackIndex(
 /**
  * Parses an audio filename like "Bigflo & Oli - Dommage.mp3" into { artist, title }.
  */
-export function parseAudioFilename(filename: string): { title: string; artist: string } {
+export function parseAudioFilename(filename: string): {
+  title: string;
+  artist: string;
+} {
   const withoutExt = filename.replace(/\.[^.]+$/, '').replace(/_/g, ' ').trim();
   const dashSplit = withoutExt.split(/\s+[-–—]\s+/);
   if (dashSplit.length >= 2) {
@@ -152,7 +208,10 @@ export function parseAudioFilename(filename: string): { title: string; artist: s
 /**
  * Attempts to match a dropped/scanned audio filename against existing library tracks.
  */
-export function matchLocalFilenameToTrack(filename: string, tracks: Track[]): Track | null {
+export function matchLocalFilenameToTrack(
+  filename: string,
+  tracks: Track[]
+): Track | null {
   const normFile = normalizeText(filename.replace(/\.[^.]+$/, ''));
   if (!normFile) return null;
 
@@ -166,7 +225,11 @@ export function matchLocalFilenameToTrack(filename: string, tracks: Track[]): Tr
     let score = 0;
     if (normFile === normTitle) {
       score = 100;
-    } else if (normFile.includes(normTitle) && firstArtist && normFile.includes(firstArtist)) {
+    } else if (
+      normFile.includes(normTitle) &&
+      firstArtist &&
+      normFile.includes(firstArtist)
+    ) {
       score = 95;
     } else if (normFile.includes(normTitle) && normTitle.length >= 5) {
       score = 70;
@@ -176,7 +239,10 @@ export function matchLocalFilenameToTrack(filename: string, tracks: Track[]): Tr
         const hits = titleWords.filter((w) => normFile.includes(w)).length;
         const ratio = hits / titleWords.length;
         if (ratio >= 0.75) {
-          score = Math.round(ratio * 60 + (firstArtist && normFile.includes(firstArtist) ? 25 : 0));
+          score = Math.round(
+            ratio * 60 +
+              (firstArtist && normFile.includes(firstArtist) ? 25 : 0)
+          );
         }
       }
     }
@@ -193,7 +259,7 @@ export function matchLocalFilenameToTrack(filename: string, tracks: Track[]): Tr
 const YT_ID_REGEX = /^[a-zA-Z0-9_-]{11}$/;
 
 /**
- * Extracts a 11-character YouTube video ID from any share link, watch URL,
+ * Extracts an 11-character YouTube video ID from any share link, watch URL,
  * YouTube Music link, Shorts URL, embed URL, "yt:ID" prefix, or (optionally) raw ID.
  */
 export function extractYouTubeVideoId(
@@ -212,10 +278,11 @@ export function extractYouTubeVideoId(
     return trimmed;
   }
 
-  // Handle URLs with or without protocol (e.g. "youtu.be/xyz" or "https://youtu.be/xyz?si=...")
   const withProto = /^https?:\/\//i.test(trimmed)
     ? trimmed
-    : /^(?:www\.|m\.|music\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)\//i.test(trimmed)
+    : /^(?:www\.|m\.|music\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)\//i.test(
+          trimmed
+        )
       ? `https://${trimmed}`
       : null;
 
@@ -339,7 +406,7 @@ export function getYouTubeWatchUrl(videoId: string): string {
 }
 
 /**
- * Returns standard YouTube search URL as fallback.
+ * Returns standard YouTube search URL.
  */
 export function getYouTubeSearchUrl(query: string): string {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
@@ -348,7 +415,10 @@ export function getYouTubeSearchUrl(query: string): string {
 /**
  * Resolves the official YouTube destination URL for a track.
  */
-export function getTrackYouTubeWatchUrl(track: Track, activeVideoId?: string | null): string {
+export function getTrackYouTubeWatchUrl(
+  track: Track,
+  activeVideoId?: string | null
+): string {
   if (activeVideoId) {
     return getYouTubeWatchUrl(activeVideoId);
   }
@@ -356,169 +426,7 @@ export function getTrackYouTubeWatchUrl(track: Track, activeVideoId?: string | n
   if (firstId) {
     return getYouTubeWatchUrl(firstId);
   }
-  return getYouTubeSearchUrl(track.searchQuery || `${track.title} ${track.artist}`);
+  return getYouTubeSearchUrl(
+    track.searchQuery || `${track.title} ${track.artist}`
+  );
 }
-
-/**
- * Returns true if a preview URL uses a short-lived signed token (such as Deezer's hdnea=exp=...)
- * that should NOT be saved permanently into localStorage.
- */
-export function isTransientSignedStreamUrl(url?: string | null): boolean {
-  if (!url) return false;
-  return /dzcdn\.net|hdnea=exp=/i.test(url);
-}
-
-/**
- * Checks whether a signed Deezer preview URL (hdnea=exp=<unix_seconds>) is expired
- * or within 60 seconds of expiring.
- */
-export function isExpiredDeezerPreviewUrl(
-  url?: string | null,
-  nowMs: number = Date.now()
-): boolean {
-  if (!url) return true;
-  const match = url.match(/exp=(\d{9,12})/i);
-  if (!match) return false;
-  const expSeconds = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(expSeconds)) return false;
-  return expSeconds * 1000 <= nowMs + 60_000;
-}
-
-const KARAOKE_RE =
-  /\b(karaoke|tribute|in the style of|8-bit|ringtone|lullaby|made famous by|cover version|backing track)\b/i;
-
-/**
- * Computes a relevance score (higher is better) for a catalog search result against a user query.
- */
-export function scoreSearchMatch(
-  item: Pick<SearchResultTrack, 'title' | 'artist' | 'album' | 'previewUrl'>,
-  query = ''
-): number {
-  let score = item.previewUrl ? 20 : 0;
-  const rawBlob = `${item.title} ${item.artist} ${item.album}`;
-
-  if (KARAOKE_RE.test(rawBlob) && !KARAOKE_RE.test(query)) {
-    score -= 60;
-  }
-
-  const normQuery = normalizeText(query);
-  if (!normQuery) return score;
-
-  const normTitle = normalizeText(item.title);
-  const normArtist = normalizeText(item.artist);
-  const combined = `${normArtist} ${normTitle}`;
-
-  if (combined === normQuery || `${normTitle} ${normArtist}` === normQuery) {
-    score += 100;
-  } else {
-    if (normTitle === normQuery) score += 70;
-    else if (normTitle.startsWith(normQuery)) score += 45;
-    else if (normTitle.includes(normQuery)) score += 30;
-
-    if (normArtist === normQuery) score += 60;
-    else if (normArtist.includes(normQuery)) score += 35;
-
-    const words = normQuery.split(' ').filter((w) => w.length >= 2);
-    if (words.length > 0) {
-      const matchedWords = words.filter((w) => combined.includes(w)).length;
-      score += Math.round((matchedWords / words.length) * 45);
-    }
-  }
-
-  return score;
-}
-
-/**
- * Deduplicates, enriches, and ranks catalog tracks coming from Apple iTunes and Deezer.
- * When the same song is returned by both APIs, merges metadata & keeps both preview URLs
- * (`previewUrl` + `fallbackPreviewUrl`) for instant failover.
- */
-export function mergeAndScoreCatalogResults(
-  items: SearchResultTrack[],
-  query = ''
-): SearchResultTrack[] {
-  const bySignature = new Map<string, SearchResultTrack>();
-
-  const cleanCoreTitle = (t: string) =>
-    normalizeText(
-      t.replace(
-        /\s*[\(\[](?:feat\.?|ft\.?|with|remaster(?:ed)?|radio edit|album version|single version)[^\)\]]*[\)\]]/gi,
-        ''
-      )
-    );
-
-  for (const item of items) {
-    const primaryArtist = normalizeText(item.artist.split(/[,&]/)[0] || item.artist);
-    const sig = `${cleanCoreTitle(item.title)}::${primaryArtist}`;
-    const itemProviders: Array<'deezer' | 'itunes'> = item.providerSources
-      ? [...item.providerSources]
-      : item.source === 'deezer' || item.source === 'itunes'
-        ? [item.source]
-        : [];
-
-    const existing = bySignature.get(sig);
-    if (!existing) {
-      bySignature.set(sig, {
-        ...item,
-        providerSources: itemProviders,
-      });
-      continue;
-    }
-
-    // Merge rich fields from both Apple iTunes & Deezer
-    const mergedProviders = Array.from(
-      new Set([...(existing.providerSources || []), ...itemProviders])
-    );
-
-    // Prefer Apple's stable CDN URL as primary if available, and keep the other as fallback
-    let primaryPreview = existing.previewUrl;
-    let fallbackPreview = existing.fallbackPreviewUrl;
-    if (!primaryPreview && item.previewUrl) {
-      primaryPreview = item.previewUrl;
-    } else if (
-      item.previewUrl &&
-      item.previewUrl !== primaryPreview &&
-      !fallbackPreview
-    ) {
-      if (isTransientSignedStreamUrl(primaryPreview) && !isTransientSignedStreamUrl(item.previewUrl)) {
-        fallbackPreview = primaryPreview;
-        primaryPreview = item.previewUrl;
-      } else {
-        fallbackPreview = item.previewUrl;
-      }
-    }
-
-    // Prefer 600x600 Apple artwork or Deezer cover_big over smaller thumbnails
-    const preferNewCover =
-      (!existing.coverUrl && Boolean(item.coverUrl)) ||
-      (item.coverUrl.includes('600x600') && !existing.coverUrl.includes('600x600'));
-
-    bySignature.set(sig, {
-      ...existing,
-      coverUrl: preferNewCover ? item.coverUrl : existing.coverUrl,
-      previewUrl: primaryPreview,
-      fallbackPreviewUrl: fallbackPreview,
-      deezerId: existing.deezerId ?? item.deezerId,
-      itunesId: existing.itunesId ?? item.itunesId,
-      genre: existing.genre || item.genre,
-      releaseYear: existing.releaseYear || item.releaseYear,
-      explicit: existing.explicit || item.explicit,
-      providerSources: mergedProviders,
-    });
-  }
-
-  const mergedList = Array.from(bySignature.values());
-  if (!query.trim()) return mergedList;
-
-  return mergedList
-    .map((item, idx) => ({
-      item,
-      idx,
-      score:
-        scoreSearchMatch(item, query) +
-        ((item.providerSources?.length || 0) > 1 ? 8 : 0),
-    }))
-    .sort((a, b) => b.score - a.score || a.idx - b.idx)
-    .map((entry) => entry.item);
-}
-

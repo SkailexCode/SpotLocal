@@ -30,6 +30,7 @@ interface TrackListViewProps {
   subtitle?: string;
   ownerName: string;
   coverUrl?: string;
+  initialGenre?: string;
   tracks: Track[];
   allPlaylists: Playlist[];
   currentPlaylistId?: string;
@@ -47,6 +48,7 @@ interface TrackListViewProps {
   onAttachYouTubeLink: (track: Track) => void;
   onSelectArtist?: (artistName: string) => void;
   onOpenImportModal: () => void;
+  onExploreCatalog?: () => void;
 }
 
 interface TrackRowProps {
@@ -326,6 +328,7 @@ export const TrackListView = memo(function TrackListView({
   subtitle,
   ownerName,
   coverUrl,
+  initialGenre,
   tracks,
   allPlaylists,
   currentPlaylistId,
@@ -342,12 +345,21 @@ export const TrackListView = memo(function TrackListView({
   onAttachYouTubeLink,
   onSelectArtist,
   onOpenImportModal,
+  onExploreCatalog,
 }: TrackListViewProps) {
   const [tableFilter, setTableFilter] = useState('');
-  const [selectedGenre, setSelectedGenre] = useState<string>('all');
+  const [selectedGenre, setSelectedGenre] = useState<string>(
+    initialGenre || 'all'
+  );
   const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'youtube'>(
     'all'
   );
+
+  useEffect(() => {
+    if (initialGenre) {
+      setSelectedGenre(initialGenre);
+    }
+  }, [initialGenre]);
   const [sortField, setSortField] = useState<SortKey>('default');
   const [sortAsc, setSortAsc] = useState(true);
   const [openMenuTrackId, setOpenMenuTrackId] = useState<string | null>(null);
@@ -497,7 +509,8 @@ export const TrackListView = memo(function TrackListView({
               <span className="font-bold">{ownerName}</span>
               <span className="text-white/60">•</span>
               <span className="text-white/85 font-mono-tabular">
-                {tracks.length} {tracks.length > 1 ? 'titres' : 'titre'}
+                {displayedTracks.length.toLocaleString('fr-FR')}{' '}
+                {displayedTracks.length > 1 ? 'titres' : 'titre'}
               </span>
               {tracks.length > 0 && (
                 <>
@@ -676,13 +689,31 @@ export const TrackListView = memo(function TrackListView({
 
         {/* Empty State */}
         {displayedTracks.length === 0 ? (
-          <div className="py-16 text-center space-y-2">
+          <div className="py-16 text-center space-y-3">
             <p className="text-base font-semibold text-white">
-              Aucun titre à afficher
+              {headerType === 'liked' && tracks.length === 0
+                ? 'Vous n’avez encore aucun titre liké'
+                : headerType === 'playlist' && tracks.length === 0
+                  ? 'Cette playlist est vide pour le moment'
+                  : 'Aucun titre à afficher'}
             </p>
-            <p className="text-sm text-[#b3b3b3]">
-              Ajustez le filtre, collez un lien YouTube ou importez vos MP3 locaux.
+            <p className="text-sm text-[#b3b3b3] max-w-md mx-auto">
+              {headerType === 'liked' && tracks.length === 0
+                ? 'Parcourez le catalogue YouTube intégral et cliquez sur le cœur (♥) ou le bouton (+) pour enregistrer vos sons favoris ici.'
+                : 'Ajustez le filtre, parcourez le catalogue, collez un lien YouTube ou glissez vos MP3 locaux.'}
             </p>
+            {onExploreCatalog && tracks.length === 0 && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={onExploreCatalog}
+                  className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5 fill-black" />
+                  <span>Explorer le catalogue intégral</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="mt-2 space-y-0.5" data-testid="track-table-body">

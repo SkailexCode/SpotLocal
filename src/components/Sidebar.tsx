@@ -1,6 +1,16 @@
 import { memo, useMemo, useState } from 'react';
-import { Disc3, FileAudio, Heart, Library, Plus, X, Youtube } from 'lucide-react';
+import {
+  Disc3,
+  FileAudio,
+  Heart,
+  Library,
+  Plus,
+  Search,
+  X,
+  Youtube,
+} from 'lucide-react';
 import type { ActiveView, Playlist, Track } from '../types/music';
+import { normalizeText } from '../utils/musicLogic';
 import { AlbumCover } from './AlbumCover';
 
 interface SidebarProps {
@@ -21,6 +31,8 @@ interface SidebarProps {
   onCloseMobile: () => void;
 }
 
+const ARTISTS_PAGE_SIZE = 80;
+
 export const Sidebar = memo(function Sidebar({
   activeView,
   selectedPlaylistId,
@@ -38,7 +50,12 @@ export const Sidebar = memo(function Sidebar({
   mobileOpen,
   onCloseMobile,
 }: SidebarProps) {
-  const [filterMode, setFilterMode] = useState<'playlists' | 'artists'>('playlists');
+  const [filterMode, setFilterMode] = useState<'playlists' | 'artists'>(
+    'playlists'
+  );
+  const [artistQuery, setArtistQuery] = useState('');
+  const [visibleArtistCount, setVisibleArtistCount] =
+    useState(ARTISTS_PAGE_SIZE);
 
   const artists = useMemo(() => {
     const artistMap = new Map<
@@ -64,6 +81,12 @@ export const Sidebar = memo(function Sidebar({
     }
     return Array.from(artistMap.values()).sort((a, b) => b.count - a.count);
   }, [tracks]);
+
+  const filteredArtists = useMemo(() => {
+    const q = normalizeText(artistQuery);
+    if (!q) return artists;
+    return artists.filter((a) => normalizeText(a.name).includes(q));
+  }, [artists, artistQuery]);
 
   const trackById = useMemo(
     () => new Map(tracks.map((t) => [t.id, t])),
@@ -113,20 +136,41 @@ export const Sidebar = memo(function Sidebar({
               : 'bg-[#232323] text-white hover:bg-[#2a2a2a]'
           }`}
         >
-          Playlists
+          Playlists {playlists.length > 0 ? `(${playlists.length})` : ''}
         </button>
         <button
           type="button"
-          onClick={() => setFilterMode('artists')}
+          onClick={() => {
+            setFilterMode('artists');
+            setVisibleArtistCount(ARTISTS_PAGE_SIZE);
+          }}
           className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             filterMode === 'artists'
               ? 'bg-white text-black'
               : 'bg-[#232323] text-white hover:bg-[#2a2a2a]'
           }`}
         >
-          Artistes ({artists.length})
+          Artistes ({artists.length.toLocaleString('fr-FR')})
         </button>
       </div>
+
+      {filterMode === 'artists' && (
+        <div className="px-3 pb-2">
+          <div className="relative flex items-center">
+            <Search className="w-3.5 h-3.5 text-[#9a9a9a] absolute left-2.5 pointer-events-none" />
+            <input
+              type="search"
+              value={artistQuery}
+              onChange={(e) => {
+                setArtistQuery(e.target.value);
+                setVisibleArtistCount(ARTISTS_PAGE_SIZE);
+              }}
+              placeholder="Filtrer un artiste…"
+              className="w-full h-8 pl-8 pr-2.5 rounded-md bg-[#1e1e1e] text-xs text-white placeholder-[#8e8e8e] outline-none border border-white/[0.06] focus:border-white/20"
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
         {filterMode === 'playlists' ? (
@@ -154,13 +198,14 @@ export const Sidebar = memo(function Sidebar({
                   Titres likés
                 </p>
                 <p className="text-[13px] text-[#b3b3b3] truncate">
-                  Playlist · <span className="font-mono-tabular">{likedCount}</span>{' '}
+                  Favoris ·{' '}
+                  <span className="font-mono-tabular">{likedCount}</span>{' '}
                   {likedCount > 1 ? 'titres' : 'titre'}
                 </p>
               </div>
             </button>
 
-            {/* All Tracks */}
+            {/* Full YouTube Catalog */}
             <button
               type="button"
               onClick={() => {
@@ -182,10 +227,10 @@ export const Sidebar = memo(function Sidebar({
                     activeView === 'all-tracks' ? 'text-[#1ED760]' : 'text-white'
                   }`}
                 >
-                  Toutes les musiques
+                  Catalogue intégral
                 </p>
                 <p className="text-[13px] text-[#b3b3b3] truncate">
-                  Catalogue ·{' '}
+                  YouTube ·{' '}
                   <span className="font-mono-tabular">
                     {tracks.length.toLocaleString('fr-FR')}
                   </span>{' '}
@@ -194,96 +239,138 @@ export const Sidebar = memo(function Sidebar({
               </div>
             </button>
 
-            {/* Playlists */}
-            {playlists.map((pl) => {
-              const isActive =
-                activeView === 'playlist' && selectedPlaylistId === pl.id;
-              const firstTrackCover =
-                pl.coverUrl ||
-                (pl.trackIds[0] ? trackById.get(pl.trackIds[0])?.coverUrl : '') ||
-                '';
-
-              return (
+            {/* User-created Playlists or First-Visit Empty State */}
+            {playlists.length === 0 ? (
+              <div className="mx-1 mt-3 p-4 rounded-lg bg-[#1a1a1a] border border-white/[0.06] space-y-2.5">
+                <p className="text-sm font-bold text-white leading-snug">
+                  Créez votre première playlist
+                </p>
+                <p className="text-xs text-[#b3b3b3] leading-relaxed">
+                  C&apos;est simple : enregistrez vos sons préférés parmi les{' '}
+                  {tracks.length.toLocaleString('fr-FR')} clips intégraux.
+                </p>
                 <button
-                  key={pl.id}
                   type="button"
                   onClick={() => {
-                    onSelectPlaylist(pl.id);
+                    onCreatePlaylist();
+                    onCloseMobile();
+                  }}
+                  className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full bg-white hover:bg-[#e5e5e5] text-black text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Créer une playlist</span>
+                </button>
+              </div>
+            ) : (
+              playlists.map((pl) => {
+                const isActive =
+                  activeView === 'playlist' && selectedPlaylistId === pl.id;
+                const firstTrackCover =
+                  pl.coverUrl ||
+                  (pl.trackIds[0]
+                    ? trackById.get(pl.trackIds[0])?.coverUrl
+                    : '') ||
+                  '';
+
+                return (
+                  <button
+                    key={pl.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectPlaylist(pl.id);
+                      onCloseMobile();
+                    }}
+                    className={`w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors cursor-pointer ${
+                      isActive ? 'bg-[#282828]' : 'hover:bg-[#1f1f1f]'
+                    }`}
+                  >
+                    {firstTrackCover ? (
+                      <AlbumCover
+                        src={firstTrackCover}
+                        alt={pl.name}
+                        sizeClass="w-12 h-12"
+                        roundedClass="rounded-[4px]"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-[4px] bg-[#282828] flex items-center justify-center shrink-0">
+                        <Disc3 className="w-5 h-5 text-[#b3b3b3]" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`text-[15px] font-medium truncate ${
+                          isActive ? 'text-[#1ED760]' : 'text-white'
+                        }`}
+                      >
+                        {pl.name}
+                      </p>
+                      <p className="text-[13px] text-[#b3b3b3] truncate">
+                        Playlist ·{' '}
+                        <span className="font-mono-tabular">
+                          {pl.trackIds.length}
+                        </span>{' '}
+                        {pl.trackIds.length > 1 ? 'titres' : 'titre'}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </>
+        ) : (
+          <>
+            {filteredArtists.slice(0, visibleArtistCount).map((artist) => {
+              const isActive =
+                activeView === 'artist' && selectedArtist === artist.name;
+              return (
+                <button
+                  key={artist.name}
+                  type="button"
+                  onClick={() => {
+                    onSelectArtist(artist.name);
                     onCloseMobile();
                   }}
                   className={`w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors cursor-pointer ${
                     isActive ? 'bg-[#282828]' : 'hover:bg-[#1f1f1f]'
                   }`}
                 >
-                  {firstTrackCover ? (
-                    <AlbumCover
-                      src={firstTrackCover}
-                      alt={pl.name}
-                      sizeClass="w-12 h-12"
-                      roundedClass="rounded-[4px]"
-                    />
-                  ) : (
-                    <div className="w-12 h-12 rounded-[4px] bg-[#282828] flex items-center justify-center shrink-0">
-                      <Disc3 className="w-5 h-5 text-[#b3b3b3]" />
-                    </div>
-                  )}
+                  <AlbumCover
+                    src={artist.coverUrl}
+                    alt={artist.name}
+                    sizeClass="w-11 h-11"
+                    roundedClass="rounded-full"
+                  />
                   <div className="min-w-0 flex-1">
                     <p
-                      className={`text-[15px] font-medium truncate ${
+                      className={`text-sm font-medium truncate ${
                         isActive ? 'text-[#1ED760]' : 'text-white'
                       }`}
                     >
-                      {pl.name}
+                      {artist.name}
                     </p>
-                    <p className="text-[13px] text-[#b3b3b3] truncate">
-                      Playlist ·{' '}
-                      <span className="font-mono-tabular">{pl.trackIds.length}</span>{' '}
-                      {pl.trackIds.length > 1 ? 'titres' : 'titre'}
+                    <p className="text-xs text-[#b3b3b3] truncate">
+                      Artiste ·{' '}
+                      <span className="font-mono-tabular">{artist.count}</span>{' '}
+                      {artist.count > 1 ? 'titres' : 'titre'}
                     </p>
                   </div>
                 </button>
               );
             })}
+            {visibleArtistCount < filteredArtists.length && (
+              <div className="pt-2 pb-1 text-center">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleArtistCount((c) => c + ARTISTS_PAGE_SIZE)
+                  }
+                  className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold text-white cursor-pointer"
+                >
+                  Afficher plus ({filteredArtists.length - visibleArtistCount})
+                </button>
+              </div>
+            )}
           </>
-        ) : (
-          artists.map((artist) => {
-            const isActive =
-              activeView === 'artist' && selectedArtist === artist.name;
-            return (
-              <button
-                key={artist.name}
-                type="button"
-                onClick={() => {
-                  onSelectArtist(artist.name);
-                  onCloseMobile();
-                }}
-                className={`w-full flex items-center gap-3 p-2 rounded-md text-left transition-colors cursor-pointer ${
-                  isActive ? 'bg-[#282828]' : 'hover:bg-[#1f1f1f]'
-                }`}
-              >
-                <AlbumCover
-                  src={artist.coverUrl}
-                  alt={artist.name}
-                  sizeClass="w-12 h-12"
-                  roundedClass="rounded-full"
-                />
-                <div className="min-w-0 flex-1">
-                  <p
-                    className={`text-[15px] font-medium truncate ${
-                      isActive ? 'text-[#1ED760]' : 'text-white'
-                    }`}
-                  >
-                    {artist.name}
-                  </p>
-                  <p className="text-[13px] text-[#b3b3b3] truncate">
-                    Artiste ·{' '}
-                    <span className="font-mono-tabular">{artist.count}</span>{' '}
-                    {artist.count > 1 ? 'titres' : 'titre'}
-                  </p>
-                </div>
-              </button>
-            );
-          })
         )}
       </div>
 

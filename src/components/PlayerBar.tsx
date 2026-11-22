@@ -167,34 +167,22 @@ export function PlayerBar({
                   <button
                     type="button"
                     onClick={onToggleVideoMode}
-                    title="Cliquer pour afficher/masquer le clip YouTube"
+                    title="Cliquer pour basculer entre Mini-lecteur et Mode Cinéma"
                     className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[10px] font-bold shrink-0 cursor-pointer"
                   >
                     <Youtube className="w-2.5 h-2.5 fill-current" />
-                    YT
+                    YT Intégral
                   </button>
                 )}
-                {(activeAudioSource === 'deezer' ||
-                  activeAudioSource === 'itunes' ||
-                  activeAudioSource === 'stream') && (
+                {activeAudioSource === 'none' && (
                   <button
                     type="button"
                     onClick={() => onAttachYouTubeLink(currentTrack)}
-                    title="Extrait 30s — Cliquez pour associer un lien YouTube intégral"
-                    className={`hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 cursor-pointer ${
-                      activeAudioSource === 'deezer'
-                        ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-300'
-                        : activeAudioSource === 'itunes'
-                          ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300'
-                          : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300'
-                    }`}
+                    title="Associer ou modifier le lien YouTube"
+                    className="hidden md:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/15 text-[#b3b3b3] text-[10px] font-semibold shrink-0 cursor-pointer"
                   >
                     <Link2 className="w-2.5 h-2.5" />
-                    {activeAudioSource === 'deezer'
-                      ? 'Deezer · Lier YT'
-                      : activeAudioSource === 'itunes'
-                        ? 'Apple · Lier YT'
-                        : '30s · Lier YT'}
+                    Lier YT
                   </button>
                 )}
               </div>
