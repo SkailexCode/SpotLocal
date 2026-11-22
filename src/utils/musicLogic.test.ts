@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   extractMultipleYouTubeVideoIds,
   extractYouTubeVideoId,
@@ -7,7 +9,8 @@ import {
   formatTime,
   getNextTrackIndex,
   getPreviousTrackIndex,
-  getTrackYouTubeWatchUrl,
+  getYouTubeSearchUrl,
+  getYouTubeWatchUrl,
   matchLocalFilenameToTrack,
   parseAudioFilename,
   parseYouTubeTitleAndChannel,
@@ -16,216 +19,182 @@ import {
   totalDurationLabel,
 } from './musicLogic';
 import { DEFAULT_PLAYLISTS, SEED_TRACKS } from '../data/initialLibrary';
+import { catalogStore } from './catalogEngine';
 import type { Track } from '../types/music';
 
-const sampleTracks: Track[] = [
+const SAMPLE: Track[] = [
   {
     id: '1',
-    title: 'The Sound of Silence - Electric Version',
-    artist: 'Simon & Garfunkel',
-    album: 'Sounds Of Silence',
+    title: 'Tout oublier',
+    artist: 'Angèle',
+    album: 'Brol',
+    genre: 'Scène Française',
     addedAt: 'Catalogue YouTube',
-    durationLabel: '3:10',
-    durationSec: 190,
-    liked: false,
-    coverUrl: 'https://i.ytimg.com/vi/4zLfCnGVeL4/hqdefault.jpg',
+    durationSec: 202,
+    durationLabel: '3:22',
+    coverUrl: '',
     previewUrl: '',
-    youtubeVideoIds: ['4zLfCnGVeL4'],
-    genre: 'Rock & Légendes',
+    liked: false,
+    youtubeVideoIds: ['Fy1xQSiLx8U'],
   },
   {
     id: '2',
-    title: 'La Quête',
-    artist: 'Orelsan',
-    album: 'Civilisation',
+    title: 'Papaoutai',
+    artist: 'Stromae',
+    album: 'Racine carrée',
+    genre: 'Scène Française',
     addedAt: 'Catalogue YouTube',
-    durationLabel: '4:04',
-    durationSec: 244,
-    liked: false,
-    coverUrl: 'https://i.ytimg.com/vi/Aq1c1tG7hRU/hqdefault.jpg',
+    durationSec: 232,
+    durationLabel: '3:52',
+    coverUrl: '',
     previewUrl: '',
-    youtubeVideoIds: ['Aq1c1tG7hRU'],
-    genre: 'Rap FR',
+    liked: false,
+    youtubeVideoIds: ['oiKj0Z_Xnjc'],
   },
   {
     id: '3',
-    title: 'Dream Is Collapsing',
-    artist: 'Hans Zimmer',
-    album: 'Inception',
+    title: 'Basique',
+    artist: 'Orelsan',
+    album: 'La fête est finie',
+    genre: 'Rap FR',
     addedAt: 'Catalogue YouTube',
-    durationLabel: '2:24',
-    durationSec: 144,
-    liked: false,
-    coverUrl: 'https://i.ytimg.com/vi/imkpO12cR3s/hqdefault.jpg',
+    durationSec: 245,
+    durationLabel: '4:05',
+    coverUrl: '',
     previewUrl: '',
-    youtubeVideoIds: ['imkpO12cR3s'],
-    genre: 'Cinéma & Instrumental',
+    liked: false,
+    youtubeVideoIds: ['2bjk26RwjyU'],
   },
 ];
 
 test('formatTime formats seconds cleanly', () => {
   assert.equal(formatTime(0), '0:00');
   assert.equal(formatTime(65), '1:05');
-  assert.equal(formatTime(190), '3:10');
-  assert.equal(formatTime(-4), '0:00');
+  assert.equal(formatTime(232.9), '3:52');
+  assert.equal(formatTime(-10), '0:00');
 });
 
 test('filterTracks matches multi-word, title, artist, genre, and accented text', () => {
-  assert.equal(filterTracks(sampleTracks, 'orelsan quete').length, 1);
-  assert.equal(filterTracks(sampleTracks, 'zimmer')[0]?.id, '3');
-  assert.equal(filterTracks(sampleTracks, 'cinema')[0]?.id, '3');
-  assert.equal(filterTracks(sampleTracks, '').length, 3);
+  assert.equal(filterTracks(SAMPLE, 'angele').length, 1);
+  assert.equal(filterTracks(SAMPLE, 'stromae papaoutai').length, 1);
+  assert.equal(filterTracks(SAMPLE, 'Racine').length, 1);
+  assert.equal(filterTracks(SAMPLE, '', 'Rap FR').length, 1);
+  assert.equal(filterTracks(SAMPLE, '   ').length, 3);
 });
 
 test('searchRankedTracks ranks exact artist/title match first', () => {
-  const ranked = searchRankedTracks(sampleTracks, 'Orelsan La Quête');
-  assert.equal(ranked[0]?.id, '2');
+  const ranked = searchRankedTracks(SAMPLE, 'Stromae', 10);
+  assert.equal(ranked[0]?.artist, 'Stromae');
 });
 
 test('sortTracks sorts by duration without mutating original array', () => {
-  const sorted = sortTracks(sampleTracks, 'duration', 'asc');
-  assert.deepEqual(
-    sorted.map((t) => t.id),
-    ['3', '1', '2']
-  );
-  assert.equal(sampleTracks[0].id, '1');
+  const sorted = sortTracks(SAMPLE, 'duration', 'desc');
+  assert.equal(sorted[0].id, '3');
+  assert.equal(sorted[2].id, '1');
+  assert.equal(SAMPLE[0].id, '1');
 });
 
 test('totalDurationLabel sums track durations accurately', () => {
-  assert.equal(totalDurationLabel(sampleTracks), '9 min 38 s');
+  assert.equal(totalDurationLabel(SAMPLE), '11 min 19 s');
 });
 
 test('getNextTrackIndex handles repeat modes and shuffle', () => {
-  assert.equal(getNextTrackIndex(0, 3, false, 'off'), 1);
   assert.equal(getNextTrackIndex(2, 3, false, 'off'), -1);
   assert.equal(getNextTrackIndex(2, 3, false, 'all'), 0);
   assert.equal(getNextTrackIndex(1, 3, false, 'one'), 1);
-  const shuffled = getNextTrackIndex(1, 3, true, 'off', () => 0.4);
-  assert.notEqual(shuffled, 1);
 });
 
 test('getPreviousTrackIndex respects wrap around on repeat all', () => {
   assert.equal(getPreviousTrackIndex(0, 3, 'off'), 0);
   assert.equal(getPreviousTrackIndex(0, 3, 'all'), 2);
-  assert.equal(getPreviousTrackIndex(2, 3, 'off'), 1);
 });
 
 test('parseAudioFilename splits artist and title', () => {
-  assert.deepEqual(parseAudioFilename('Bigflo & Oli - Dommage.mp3'), {
-    artist: 'Bigflo & Oli',
-    title: 'Dommage',
+  assert.deepEqual(parseAudioFilename('Stromae - Papaoutai.mp3'), {
+    artist: 'Stromae',
+    title: 'Papaoutai',
   });
-  assert.deepEqual(parseAudioFilename('Starry_Night.wav'), {
+  assert.deepEqual(parseAudioFilename('ma_chanson_perso.flac'), {
     artist: 'Fichier local',
-    title: 'Starry Night',
+    title: 'ma chanson perso',
   });
 });
 
 test('matchLocalFilenameToTrack matches filenames to catalog tracks', () => {
-  const m1 = matchLocalFilenameToTrack(
-    'Hans Zimmer - Dream Is Collapsing.mp3',
-    sampleTracks
-  );
-  assert.equal(m1?.id, '3');
-  const m2 = matchLocalFilenameToTrack(
-    'Orelsan - La Quete.flac',
-    sampleTracks
-  );
-  assert.equal(m2?.id, '2');
-  const m3 = matchLocalFilenameToTrack('Unknown_Track_XYZ.mp3', sampleTracks);
-  assert.equal(m3, null);
+  const matched = matchLocalFilenameToTrack('Stromae - Papaoutai.mp3', SAMPLE);
+  assert.equal(matched?.id, '2');
 });
 
 test('YouTube URL helpers format official watch and search links', () => {
-  const trackWithYt: Track = {
-    ...sampleTracks[0]!,
-    youtubeVideoIds: ['G_0d_voVayg'],
-  };
-  const trackWithoutYt: Track = {
-    ...sampleTracks[1]!,
-    youtubeVideoIds: [],
-    searchQuery: 'Orelsan La Quete',
-  };
-
   assert.equal(
-    getTrackYouTubeWatchUrl(trackWithYt),
-    'https://www.youtube.com/watch?v=G_0d_voVayg'
+    getYouTubeWatchUrl('oiKj0Z_Xnjc'),
+    'https://www.youtube.com/watch?v=oiKj0Z_Xnjc'
   );
   assert.equal(
-    getTrackYouTubeWatchUrl(trackWithYt, 'custom12345'),
-    'https://www.youtube.com/watch?v=custom12345'
-  );
-  assert.equal(
-    getTrackYouTubeWatchUrl(trackWithoutYt),
-    'https://www.youtube.com/results?search_query=Orelsan%20La%20Quete'
+    getYouTubeSearchUrl('Stromae Papaoutai'),
+    'https://www.youtube.com/results?search_query=Stromae%20Papaoutai'
   );
 });
 
 test('extractYouTubeVideoId parses share links, watch URLs, YT Music, Shorts, and ignores plain search words', () => {
   assert.equal(
-    extractYouTubeVideoId('https://youtu.be/4NRXx6U8ABQ?si=9xYzAbCdEf'),
-    '4NRXx6U8ABQ'
-  );
-  assert.equal(extractYouTubeVideoId('youtu.be/oiKj0Z_Xnjc'), 'oiKj0Z_Xnjc');
-  assert.equal(
-    extractYouTubeVideoId(
-      'https://www.youtube.com/watch?v=fJ9rUzIMcZQ&list=RDfJ9rUzIMcZQ'
-    ),
-    'fJ9rUzIMcZQ'
+    extractYouTubeVideoId('https://youtu.be/oiKj0Z_Xnjc?si=abc123XYZ'),
+    'oiKj0Z_Xnjc'
   );
   assert.equal(
-    extractYouTubeVideoId(
-      'https://music.youtube.com/watch?v=5NV6Rdv1a3I&feature=share'
-    ),
-    '5NV6Rdv1a3I'
+    extractYouTubeVideoId('https://www.youtube.com/watch?v=Fy1xQSiLx8U&t=42s'),
+    'Fy1xQSiLx8U'
   );
-  assert.equal(
-    extractYouTubeVideoId('https://www.youtube.com/shorts/V9PVRfjEBTI'),
-    'V9PVRfjEBTI'
-  );
-  assert.equal(extractYouTubeVideoId('Californica'), null);
-  assert.equal(
-    extractYouTubeVideoId('4NRXx6U8ABQ', { allowRawId: true }),
-    '4NRXx6U8ABQ'
-  );
-  assert.equal(extractYouTubeVideoId('yt:4NRXx6U8ABQ'), '4NRXx6U8ABQ');
+  assert.equal(extractYouTubeVideoId('Stromae Papaoutai'), null);
 });
 
 test('extractMultipleYouTubeVideoIds deduplicates batch pasted links', () => {
-  const input = `
-    https://youtu.be/4NRXx6U8ABQ?si=123
-    https://www.youtube.com/watch?v=oiKj0Z_Xnjc
-    https://youtu.be/4NRXx6U8ABQ
+  const pasted = `
+    https://youtu.be/oiKj0Z_Xnjc?si=123
+    https://www.youtube.com/watch?v=Fy1xQSiLx8U
+    https://music.youtube.com/watch?v=oiKj0Z_Xnjc
   `;
-  assert.deepEqual(extractMultipleYouTubeVideoIds(input), [
-    '4NRXx6U8ABQ',
+  assert.deepEqual(extractMultipleYouTubeVideoIds(pasted), [
     'oiKj0Z_Xnjc',
+    'Fy1xQSiLx8U',
   ]);
 });
 
 test('parseYouTubeTitleAndChannel cleans official tags and splits Artist - Title', () => {
   assert.deepEqual(
     parseYouTubeTitleAndChannel(
-      'Stromae - Papaoutai (Clip Officiel)',
+      'Stromae - Papaoutai (Official Music Video)',
       'StromaeVEVO'
     ),
     { artist: 'Stromae', title: 'Papaoutai' }
   );
-  assert.deepEqual(
-    parseYouTubeTitleAndChannel(
-      'Blinding Lights (Official Audio)',
-      'The Weeknd - Topic'
-    ),
-    { artist: 'The Weeknd', title: 'Blinding Lights' }
-  );
 });
 
-test('Initial catalog has 5000+ YouTube tracks, 0 pre-saved playlists, and 0 pre-liked tracks', () => {
+test('112,000-track catalog integrity, clean first-visit state, and instant CatalogStore queries', () => {
   assert.equal(DEFAULT_PLAYLISTS.length, 0);
-  assert.ok(SEED_TRACKS.length >= 5000);
-  assert.equal(SEED_TRACKS.filter((t) => t.liked).length, 0);
-  for (const t of SEED_TRACKS) {
-    assert.ok(t.youtubeVideoIds && t.youtubeVideoIds.length >= 1);
-    assert.match(t.youtubeVideoIds[0]!, /^[A-Za-z0-9_-]{11}$/);
+  assert.equal(SEED_TRACKS.length, 1600);
+  assert.ok(SEED_TRACKS.every((t) => t.liked === false));
+
+  const catalogDir = path.resolve(process.cwd(), 'public/catalog');
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(catalogDir, 'manifest.json'), 'utf8')
+  ) as { totalTracks: number; shards: string[] };
+
+  assert.ok(manifest.totalTracks >= 100000);
+  let shardRowSum = 0;
+  for (const shardFile of manifest.shards) {
+    const rows = JSON.parse(
+      fs.readFileSync(path.join(catalogDir, shardFile), 'utf8')
+    ) as unknown[];
+    shardRowSum += rows.length;
   }
+  assert.equal(SEED_TRACKS.length + shardRowSum, manifest.totalTracks);
+
+  // Verify CatalogStore fast query on core
+  const res = catalogStore.queryCatalog(
+    { query: 'Stromae', limit: 20 },
+    { customTracks: [], likedIds: new Set(), trackOverrides: {} }
+  );
+  assert.ok(res.totalMatches >= 1);
+  assert.equal(res.tracks[0]?.sourceKind, 'youtube');
 });

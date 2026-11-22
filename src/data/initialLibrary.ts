@@ -1,8 +1,7 @@
-import seedTracksRaw from './seedTracks.json';
 import type { Playlist, Track } from '../types/music';
-import { formatTime } from '../utils/musicLogic';
+import rawSeedTuples from './seedTracks.json';
 
-type CompactSeedTuple = [
+type SeedTuple = [
   id: string,
   title: string,
   artist: string,
@@ -10,33 +9,42 @@ type CompactSeedTuple = [
   durationSec: number,
   genre: string,
   videoIds: string | string[],
+  moodMask?: number,
 ];
 
-export const SEED_TRACKS: Track[] = (
-  seedTracksRaw as unknown as CompactSeedTuple[]
-).map(([id, title, artist, album, durationSec, genre, videoIds]) => {
-  const ids = Array.isArray(videoIds) ? videoIds : [videoIds];
-  const primaryId = ids[0] || '';
-  return {
-    id,
-    title,
-    artist,
-    album: album || title,
-    addedAt: 'Catalogue YouTube',
-    durationSec,
-    durationLabel: formatTime(durationSec),
-    liked: false,
-    explicit: false,
-    hasClip: true,
-    coverUrl: primaryId
-      ? `https://i.ytimg.com/vi/${primaryId}/hqdefault.jpg`
-      : '',
-    previewUrl: '',
-    youtubeVideoIds: ids,
-    genre,
-    sourceKind: 'youtube',
-  };
-});
+function formatDurationLabel(sec: number): string {
+  const safe = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
 
-// Clean first-time visitor state: no pre-saved playlists until the user creates one
+export const SEED_TRACKS: Track[] = (rawSeedTuples as SeedTuple[]).map(
+  ([id, title, artist, album, durationSec, genre, videoIds, moodMask]) => {
+    const vids = Array.isArray(videoIds) ? videoIds : [videoIds];
+    const primaryVid = vids[0];
+    return {
+      id,
+      title,
+      artist,
+      album: album || genre,
+      genre,
+      moodMask: moodMask || 0,
+      addedAt: 'Catalogue YouTube',
+      durationSec,
+      durationLabel: formatDurationLabel(durationSec),
+      coverUrl: `https://i.ytimg.com/vi/${primaryVid}/hqdefault.jpg`,
+      previewUrl: '',
+      explicit: false,
+      liked: false,
+      youtubeVideoIds: vids,
+      sourceKind: 'youtube',
+    };
+  }
+);
+
+/**
+ * Clean first-visit state: zero pre-recorded user playlists.
+ * Users create their own playlists as if visiting for the first time.
+ */
 export const DEFAULT_PLAYLISTS: Playlist[] = [];

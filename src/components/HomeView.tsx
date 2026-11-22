@@ -1,101 +1,71 @@
 import { memo, useMemo, useState, type FormEvent } from 'react';
 import {
+  ArrowRight,
   Clock,
   Disc3,
+  Flame,
   Heart,
-  Link2,
   Pause,
   Play,
   Plus,
-  Shuffle,
+  Radio,
+  Sparkles,
   Upload,
   Youtube,
 } from 'lucide-react';
 import type { Playlist, Track } from '../types/music';
+import {
+  CATALOG_GENRES,
+  CATALOG_MOODS,
+  catalogStore,
+  type UserLibraryOverlay,
+} from '../utils/catalogEngine';
 import { extractYouTubeVideoId } from '../utils/musicLogic';
 import { AlbumCover } from './AlbumCover';
 
 interface HomeViewProps {
   likedCount: number;
+  catalogCount: number;
+  artistCount: number;
+  totalHours: number;
+  catalogVersion: number;
+  overlay: UserLibraryOverlay;
   playlists: Playlist[];
-  tracks: Track[];
   recentTracks: Track[];
   currentTrackId: string | null;
   isPlaying: boolean;
   onOpenLiked: () => void;
-  onOpenAllTracks: (initialGenre?: string) => void;
+  onOpenAllTracks: (initialGenre?: string, initialMoodBit?: number) => void;
+  onOpenMoods: () => void;
   onOpenPlaylist: (id: string) => void;
   onCreatePlaylist: () => void;
   onPlayTrack: (track: Track, queue: Track[]) => void;
+  onPlaySmartMix: (genre?: string, moodBit?: number) => void;
   onToggleLike: (trackId: string) => void;
   onQuickPasteYouTubeUrl: (url: string) => void;
-  onOpenYouTubeModal: () => void;
   onOpenImportModal: () => void;
 }
 
-const GENRE_CARDS: Array<{ genre: string; subtitle: string; gradient: string }> = [
-  {
-    genre: 'Scène Française',
-    subtitle: 'Stromae, Angèle, Indila, Céline Dion, Indochine, Clara Luciani…',
-    gradient: 'from-emerald-800 via-emerald-950 to-[#161616]',
-  },
-  {
-    genre: 'Rap FR',
-    subtitle: 'Orelsan, Nekfeu, Damso, Ninho, PNL, Hamza, Gims, Jul, Werenoi…',
-    gradient: 'from-amber-700 via-amber-950 to-[#161616]',
-  },
-  {
-    genre: 'Pop',
-    subtitle: 'The Weeknd, Billie Eilish, Dua Lipa, Taylor Swift, Bruno Mars…',
-    gradient: 'from-fuchsia-800 via-purple-950 to-[#161616]',
-  },
-  {
-    genre: 'Rock & Légendes',
-    subtitle: 'Queen, Nirvana, Pink Floyd, The Beatles, AC/DC, Linkin Park…',
-    gradient: 'from-rose-800 via-rose-950 to-[#161616]',
-  },
-  {
-    genre: 'Rap US & R&B',
-    subtitle: 'Eminem, Kendrick Lamar, Drake, Travis Scott, Snoop Dogg, Beyoncé…',
-    gradient: 'from-orange-800 via-zinc-900 to-[#161616]',
-  },
-  {
-    genre: 'Électro & Dance',
-    subtitle: 'Daft Punk, Avicii, David Guetta, DJ Snake, Calvin Harris, Justice…',
-    gradient: 'from-cyan-800 via-slate-950 to-[#161616]',
-  },
-  {
-    genre: 'Afro, Reggae & Latino',
-    subtitle: 'Burna Boy, Rema, Bob Marley, Bad Bunny, Shakira, Magic System…',
-    gradient: 'from-lime-800 via-emerald-950 to-[#161616]',
-  },
-  {
-    genre: 'K-Pop & J-Pop',
-    subtitle: 'BTS, BLACKPINK, Rosé, LE SSERAFIM, YOASOBI, Kenshi Yonezu…',
-    gradient: 'from-pink-800 via-indigo-950 to-[#161616]',
-  },
-  {
-    genre: 'Cinéma & Instrumental',
-    subtitle: 'Hans Zimmer, Ludovico Einaudi, Yann Tiersen, Ennio Morricone…',
-    gradient: 'from-indigo-800 via-slate-950 to-[#161616]',
-  },
-];
-
 export const HomeView = memo(function HomeView({
   likedCount,
+  catalogCount,
+  artistCount,
+  totalHours,
+  catalogVersion,
+  overlay,
   playlists,
-  tracks,
   recentTracks,
   currentTrackId,
   isPlaying,
   onOpenLiked,
   onOpenAllTracks,
+  onOpenMoods,
   onOpenPlaylist,
   onCreatePlaylist,
   onPlayTrack,
+  onPlaySmartMix,
   onToggleLike,
   onQuickPasteYouTubeUrl,
-  onOpenYouTubeModal,
   onOpenImportModal,
 }: HomeViewProps) {
   const [quickLink, setQuickLink] = useState('');
@@ -114,86 +84,91 @@ export const HomeView = memo(function HomeView({
     onQuickPasteYouTubeUrl(submitted);
   };
 
-  const trackById = useMemo(
-    () => new Map(tracks.map((t) => [t.id, t])),
-    [tracks]
-  );
-
-  const {
-    genreCounts,
-    frenchScene,
-    rapFr,
-    popHits,
-    rockLegends,
-    electroBeats,
-  } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const fr: Track[] = [];
-    const rfr: Track[] = [];
-    const pop: Track[] = [];
-    const rock: Track[] = [];
-    const electro: Track[] = [];
-
-    for (const t of tracks) {
-      const g = t.genre || 'Pop';
-      counts[g] = (counts[g] || 0) + 1;
-      if (g === 'Scène Française' && fr.length < 10) fr.push(t);
-      else if (g === 'Rap FR' && rfr.length < 10) rfr.push(t);
-      else if (g === 'Pop' && pop.length < 10) pop.push(t);
-      else if (g === 'Rock & Légendes' && rock.length < 10) rock.push(t);
-      else if (g === 'Électro & Dance' && electro.length < 10) electro.push(t);
-    }
-
+  const { genreCounts, moodCounts, shelves } = useMemo(() => {
+    void catalogVersion;
     return {
-      genreCounts: counts,
-      frenchScene: fr,
-      rapFr: rfr,
-      popHits: pop,
-      rockLegends: rock,
-      electroBeats: electro,
+      genreCounts: catalogStore.getGenreCounts(),
+      moodCounts: catalogStore.getMoodCounts(),
+      shelves: [
+        {
+          title: 'Scène Française & Chanson',
+          subtitle: 'Stromae, Angèle, Céline Dion, Indochine, Clara Luciani, Pomme…',
+          genre: 'Scène Française',
+          tracks: catalogStore.getShelfTracks('Scène Française', 10, overlay),
+        },
+        {
+          title: 'Rap Francophone & Urbain',
+          subtitle: 'Ninho, Damso, Orelsan, PNL, Tiakola, Hamza, Werenoi, Booba…',
+          genre: 'Rap FR',
+          tracks: catalogStore.getShelfTracks('Rap FR', 10, overlay),
+        },
+        {
+          title: 'Hits Mondiaux & Pop',
+          subtitle: 'The Weeknd, Billie Eilish, Dua Lipa, Taylor Swift, Bruno Mars…',
+          genre: 'Pop',
+          tracks: catalogStore.getShelfTracks('Pop', 10, overlay),
+        },
+        {
+          title: 'French Touch, Électro & Club',
+          subtitle: 'Daft Punk, Justice, Avicii, David Guetta, DJ Snake, Kavinsky…',
+          genre: 'Électro & Dance',
+          tracks: catalogStore.getShelfTracks('Électro & Dance', 10, overlay),
+        },
+        {
+          title: 'Rock, Indie & Légendes',
+          subtitle: 'Queen, Nirvana, Pink Floyd, Arctic Monkeys, Linkin Park…',
+          genre: 'Rock & Alternative',
+          tracks: catalogStore.getShelfTracks('Rock & Alternative', 10, overlay),
+        },
+      ],
     };
-  }, [tracks]);
-
-  const handlePlayRandomMix = () => {
-    if (tracks.length === 0) return;
-    const sample = [...tracks]
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 60);
-    if (sample[0]) {
-      onPlayTrack(sample[0], sample);
-    }
-  };
+  }, [catalogVersion, overlay]);
 
   const renderTrackCard = (track: Track, sectionQueue: Track[]) => {
-    const active = currentTrackId === track.id && isPlaying;
+    const isCurrent = currentTrackId === track.id;
+    const activePlaying = isCurrent && isPlaying;
+
     return (
       <div
         key={track.id}
-        className="group p-3.5 rounded-lg bg-[#181818] hover:bg-[#242424] transition-colors flex flex-col relative"
+        className={`group p-3 rounded-2xl studio-card flex flex-col relative ${
+          isCurrent ? 'border-[#1ED760]/40 bg-[#1ED760]/[0.05]' : ''
+        }`}
       >
         <button
           type="button"
           onClick={() => onPlayTrack(track, sectionQueue)}
-          className="relative aspect-square w-full mb-3 rounded-md overflow-hidden shadow-md bg-[#282828] cursor-pointer text-left"
+          className="relative aspect-square w-full mb-3 rounded-xl overflow-hidden shadow-lg bg-[#161925] cursor-pointer text-left"
         >
           <AlbumCover
             src={track.coverUrl}
             alt={track.title}
             sizeClass="w-full h-full"
-            roundedClass="rounded-md"
+            roundedClass="rounded-xl"
           />
-          <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/75 text-red-400 text-[9px] font-bold inline-flex items-center gap-1 backdrop-blur-xs">
-            <Youtube className="w-2.5 h-2.5 fill-current" />
-            Intégral
+
+          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/70 border border-white/10 text-[9.5px] font-semibold text-white/90 inline-flex items-center gap-1 backdrop-blur-md">
+            <Youtube className="w-2.5 h-2.5 text-rose-500 fill-rose-500" />
+            {track.durationLabel}
           </span>
+
+          {activePlaying && (
+            <span className="absolute bottom-2.5 left-2.5 px-2 py-1 rounded-lg bg-black/75 backdrop-blur-md inline-flex items-end gap-0.5 h-6">
+              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-1" />
+              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-2" />
+              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-3" />
+              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-4" />
+            </span>
+          )}
+
           <span
-            className={`absolute right-2 bottom-2 w-11 h-11 rounded-full bg-[#1ED760] text-black flex items-center justify-center shadow-xl transition-all ${
-              active
-                ? 'opacity-100 translate-y-0'
-                : 'opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0'
+            className={`absolute right-2.5 bottom-2.5 w-11 h-11 rounded-full bg-[#1ED760] text-black flex items-center justify-center shadow-[0_8px_24px_rgba(30,215,96,0.45)] transition-all ${
+              activePlaying
+                ? 'opacity-100 translate-y-0 scale-100'
+                : 'opacity-0 translate-y-2 scale-95 group-hover:opacity-100 group-hover:translate-y-0 group-hover:scale-100'
             }`}
           >
-            {active ? (
+            {activePlaying ? (
               <Pause className="w-5 h-5 fill-black" />
             ) : (
               <Play className="w-5 h-5 fill-black ml-0.5" />
@@ -208,13 +183,13 @@ export const HomeView = memo(function HomeView({
             className="min-w-0 flex-1 text-left cursor-pointer"
           >
             <p
-              className={`text-sm font-semibold truncate ${
-                currentTrackId === track.id ? 'text-[#1ED760]' : 'text-white'
+              className={`text-[13.5px] font-bold truncate ${
+                isCurrent ? 'text-[#1ED760]' : 'text-white'
               }`}
             >
               {track.title}
             </p>
-            <p className="text-xs text-[#b3b3b3] truncate mt-0.5">
+            <p className="text-xs text-[#8b93a4] truncate mt-0.5">
               {track.artist}
             </p>
           </button>
@@ -225,13 +200,10 @@ export const HomeView = memo(function HomeView({
             aria-label={
               track.liked ? 'Retirer des favoris' : 'Ajouter aux Titres likés'
             }
-            title={
-              track.liked ? 'Dans vos Titres likés' : 'Ajouter aux Titres likés'
-            }
-            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
+            className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-all cursor-pointer ${
               track.liked
                 ? 'bg-[#1ED760]/20 text-[#1ED760]'
-                : 'bg-white/5 hover:bg-white/15 text-[#b3b3b3] hover:text-white'
+                : 'bg-white/[0.04] hover:bg-white/[0.12] text-[#8b93a4] hover:text-white'
             }`}
           >
             <Heart
@@ -244,373 +216,379 @@ export const HomeView = memo(function HomeView({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-gradient-to-b from-[#1f2924] via-[#121212] to-[#121212] rounded-lg overflow-y-auto px-4 sm:px-6 py-6 space-y-9">
-      {/* Top Hero + Quick YouTube Link Bar */}
-      <div className="space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-          <div>
-            <h1 className="font-display font-bold text-2xl sm:text-3xl text-white">
-              Bienvenue sur SpotLocal
-            </h1>
-            <p className="text-sm text-[#b3b3b3] mt-1">
-              <strong className="text-white">
-                {tracks.length.toLocaleString('fr-FR')} musiques en lecture
-                intégrale
-              </strong>{' '}
-              via YouTube + vos fichiers MP3 locaux — sans compte et sans clé API.
-            </p>
+    <div className="flex-1 flex flex-col min-h-0 studio-panel rounded-2xl overflow-y-auto relative">
+      {/* Ambient Aurora Top Glow */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-[radial-gradient(ellipse_80%_60%_at_25%_0%,rgba(30,215,96,0.16),transparent_65%),radial-gradient(ellipse_60%_50%_at_85%_5%,rgba(99,102,241,0.14),transparent_60%)]" />
+
+      <div className="relative px-4 sm:px-7 py-6 sm:py-7 space-y-10">
+        {/* Editorial Hero Card */}
+        <section className="p-5 sm:p-7 rounded-3xl bg-gradient-to-br from-[#141c27]/90 via-[#10131d]/95 to-[#0b0d14] border border-white/[0.09] shadow-2xl space-y-6 relative overflow-hidden">
+          <div className="pointer-events-none absolute -right-20 -top-20 w-72 h-72 rounded-full bg-[#1ED760]/10 blur-3xl" />
+
+          <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-5 relative">
+            <div className="space-y-2.5 max-w-2xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1ED760]/12 border border-[#1ED760]/25 text-[#1ED760] text-xs font-semibold">
+                <Flame className="w-3.5 h-3.5" />
+                <span>
+                  100 % Lecture Intégrale · Zéro Extrait de 30s · Zéro Clé API
+                </span>
+              </div>
+
+              <h1 className="font-display font-extrabold text-2xl sm:text-4xl text-white leading-tight">
+                {catalogCount.toLocaleString('fr-FR')} musiques prêtes à écouter
+              </h1>
+
+              <p className="text-sm sm:text-[15px] text-[#9ca3b0] leading-relaxed">
+                Explorez{' '}
+                <strong className="text-white">
+                  {artistCount.toLocaleString('fr-FR')} artistes
+                </strong>{' '}
+                et plus de{' '}
+                <strong className="text-white">
+                  {totalHours.toLocaleString('fr-FR')} heures
+                </strong>{' '}
+                de morceaux complets via YouTube, lancez des radios par ambiance
+                ou glissez vos propres fichiers MP3 locaux.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => onPlaySmartMix()}
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-[#1ED760] hover:bg-[#22e668] text-black text-sm font-bold shadow-[0_8px_28px_rgba(30,215,96,0.35)] transition-all hover:scale-[1.02] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 fill-black" />
+                <span>Lancer un Mix Intelligent</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onOpenAllTracks('all')}
+                className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/[0.12] text-sm font-semibold text-white transition-all cursor-pointer"
+              >
+                <Disc3 className="w-4 h-4 text-[#1ED760]" />
+                <span>Parcourir tout</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onOpenImportModal}
+                className="inline-flex items-center gap-2 h-11 px-4 rounded-full bg-white/[0.05] hover:bg-white/[0.11] border border-white/[0.08] text-sm font-semibold text-[#d1d5db] hover:text-white transition-all cursor-pointer"
+              >
+                <Upload className="w-4 h-4 text-[#1ED760]" />
+                <span>MP3</span>
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handlePlayRandomMix}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors cursor-pointer"
-            >
-              <Shuffle className="w-3.5 h-3.5" />
-              <span>Mix aléatoire</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenImportModal}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-colors cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5 text-[#1ED760]" />
-              <span>Importer MP3</span>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenYouTubeModal}
-              className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-white/10 hover:bg-white/15 text-xs font-semibold text-white transition-colors cursor-pointer"
-            >
-              <Link2 className="w-3.5 h-3.5 text-red-400" />
-              <span>Import multi-liens YT</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Instant 1-Click YouTube Share Link Input */}
-        <form
-          onSubmit={handleQuickSubmit}
-          className="p-3 sm:p-3.5 rounded-xl bg-black/45 border border-white/10 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5"
-        >
-          <div className="flex items-center gap-2.5 flex-1 min-w-0 px-2">
-            <Youtube className="w-5 h-5 text-red-500 fill-red-500 shrink-0" />
-            <input
-              type="text"
-              value={quickLink}
-              onChange={(e) => {
-                setQuickLink(e.target.value);
-                if (quickError) setQuickError('');
-              }}
-              placeholder="Collez n'importe quel lien YouTube (ex: https://youtu.be/oiKj0Z_Xnjc) pour l'écouter en entier…"
-              className="w-full bg-transparent text-sm text-white placeholder-[#8e8e8e] outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            className="inline-flex items-center justify-center gap-1.5 h-9 px-4 rounded-full bg-white hover:bg-[#e5e5e5] text-black text-xs font-bold transition-colors shrink-0 cursor-pointer"
+          {/* Embedded 1-Click YouTube Link Studio Bar */}
+          <form
+            onSubmit={handleQuickSubmit}
+            className="p-2 sm:p-2.5 rounded-2xl bg-[#080a0f]/90 border border-white/[0.09] focus-within:border-[#1ED760]/50 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 transition-colors"
           >
-            <Play className="w-3.5 h-3.5 fill-black" />
-            <span>Lire &amp; Ajouter</span>
-          </button>
-        </form>
-        {quickError && (
-          <p className="text-xs text-amber-400 -mt-3 px-1">{quickError}</p>
-        )}
+            <div className="flex items-center gap-3 flex-1 min-w-0 px-2.5 py-1">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/25 flex items-center justify-center shrink-0">
+                <Youtube className="w-4 h-4 text-rose-400 fill-rose-400" />
+              </div>
+              <input
+                type="text"
+                value={quickLink}
+                onChange={(e) => {
+                  setQuickLink(e.target.value);
+                  if (quickError) setQuickError('');
+                }}
+                placeholder="Un titre manque ? Collez n'importe quel lien YouTube (https://youtu.be/...) pour l'écouter en entier…"
+                className="w-full bg-transparent text-sm text-white placeholder-[#767f91] outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-1.5 h-9.5 px-4.5 rounded-xl bg-white hover:bg-[#e5e7eb] text-black text-xs font-bold transition-colors shrink-0 cursor-pointer"
+            >
+              <Play className="w-3.5 h-3.5 fill-black" />
+              <span>Lire &amp; Ajouter</span>
+            </button>
+          </form>
+          {quickError && (
+            <p className="text-xs text-amber-400 -mt-3 px-2">{quickError}</p>
+          )}
+        </section>
 
-        {/* Quick Personal Space Tiles (Clean First-Visit State!) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+        {/* Bento Personal Space (First-Visit Clean State) */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
           <button
             type="button"
             onClick={() => onOpenAllTracks('all')}
-            className="group flex items-center gap-3.5 h-16 rounded-md bg-white/[0.07] hover:bg-white/[0.14] overflow-hidden pr-4 transition-colors text-left cursor-pointer"
+            className="group flex items-center justify-between p-4 rounded-2xl studio-card text-left cursor-pointer"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-[#1ED760] via-[#14833b] to-[#121212] flex items-center justify-center shrink-0">
-              <Disc3 className="w-6 h-6 text-black" />
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-[#1ED760] via-[#139c45] to-[#0b3d1e] flex items-center justify-center shrink-0 shadow-lg">
+                <Disc3 className="w-6 h-6 text-black" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-display font-bold text-[15px] text-white truncate">
+                  Catalogue Intégral
+                </p>
+                <p className="text-xs text-[#8b93a4] font-mono-tabular mt-0.5">
+                  {catalogCount.toLocaleString('fr-FR')} titres complets
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm text-white truncate">
-                Catalogue intégral YouTube
-              </p>
-              <p className="text-xs text-[#b3b3b3] font-mono-tabular">
-                {tracks.length.toLocaleString('fr-FR')} clips complets
-              </p>
-            </div>
+            <ArrowRight className="w-4 h-4 text-[#6e7787] group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
           </button>
 
           <button
             type="button"
             onClick={onOpenLiked}
-            className="group flex items-center gap-3.5 h-16 rounded-md bg-white/[0.07] hover:bg-white/[0.14] overflow-hidden pr-4 transition-colors text-left cursor-pointer"
+            className="group flex items-center justify-between p-4 rounded-2xl studio-card text-left cursor-pointer"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-[#450af5] via-[#6d4aff] to-[#c4efd9] flex items-center justify-center shrink-0">
-              <Heart className="w-6 h-6 text-white fill-white" />
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-emerald-300 flex items-center justify-center shrink-0 shadow-lg">
+                <Heart className="w-6 h-6 text-white fill-white" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-display font-bold text-[15px] text-white truncate">
+                  Titres likés
+                </p>
+                <p className="text-xs text-[#8b93a4] font-mono-tabular mt-0.5">
+                  {likedCount === 0
+                    ? 'Aucun favori pour l’instant'
+                    : `${likedCount} ${likedCount > 1 ? 'favoris' : 'favori'}`}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-sm text-white truncate">
-                Titres likés
-              </p>
-              <p className="text-xs text-[#b3b3b3] font-mono-tabular">
-                {likedCount === 0
-                  ? 'Aucun favori pour l’instant'
-                  : `${likedCount} ${likedCount > 1 ? 'titres' : 'titre'}`}
-              </p>
-            </div>
+            <ArrowRight className="w-4 h-4 text-[#6e7787] group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0" />
           </button>
 
           {playlists.length === 0 ? (
             <button
               type="button"
               onClick={onCreatePlaylist}
-              className="group flex items-center gap-3.5 h-16 rounded-md bg-white/[0.05] hover:bg-white/[0.12] border border-dashed border-white/15 overflow-hidden pr-4 transition-colors text-left cursor-pointer"
+              className="group flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] hover:bg-white/[0.06] border border-dashed border-white/15 hover:border-[#1ED760]/45 transition-all text-left cursor-pointer"
             >
-              <div className="w-16 h-16 bg-[#1f1f1f] flex items-center justify-center shrink-0">
-                <Plus className="w-6 h-6 text-[#1ED760]" />
+              <div className="flex items-center gap-3.5 min-w-0">
+                <div className="w-13 h-13 rounded-2xl bg-[#161a26] border border-white/[0.08] flex items-center justify-center shrink-0">
+                  <Plus className="w-6 h-6 text-[#1ED760]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-display font-bold text-[15px] text-white truncate">
+                    Créer ma première playlist
+                  </p>
+                  <p className="text-xs text-[#8b93a4] truncate mt-0.5">
+                    Organisez vos sélections sur mesure
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-sm text-white truncate">
-                  Créer une playlist
-                </p>
-                <p className="text-xs text-[#b3b3b3] truncate">
-                  Composez vos propres sélections
-                </p>
-              </div>
+              <ArrowRight className="w-4 h-4 text-[#6e7787] group-hover:text-[#1ED760] transition-colors shrink-0" />
             </button>
           ) : (
-            playlists.map((pl) => {
-              const cover =
-                pl.coverUrl ||
-                (pl.trackIds[0]
-                  ? trackById.get(pl.trackIds[0])?.coverUrl
-                  : '') ||
-                '';
+            <button
+              type="button"
+              onClick={() => onOpenPlaylist(playlists[0].id)}
+              className="group flex items-center justify-between p-4 rounded-2xl studio-card text-left cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5 min-w-0">
+                <AlbumCover
+                  src={playlists[0].coverUrl || ''}
+                  alt={playlists[0].name}
+                  sizeClass="w-13 h-13"
+                  roundedClass="rounded-2xl"
+                />
+                <div className="min-w-0">
+                  <p className="font-display font-bold text-[15px] text-white truncate">
+                    {playlists[0].name}
+                  </p>
+                  <p className="text-xs text-[#8b93a4] font-mono-tabular mt-0.5">
+                    {playlists[0].trackIds.length}{' '}
+                    {playlists[0].trackIds.length > 1 ? 'titres' : 'titre'}
+                  </p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-[#6e7787] group-hover:text-white transition-colors shrink-0" />
+            </button>
+          )}
+        </section>
+
+        {/* Recently Played (only shown once user listens to tracks!) */}
+        {recentTracks.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4.5 h-4.5 text-[#1ED760]" />
+              <h2 className="font-display font-bold text-xl text-white">
+                Écoutés récemment
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+              {recentTracks
+                .slice(0, 5)
+                .map((t) => renderTrackCard(t, recentTracks))}
+            </div>
+          </section>
+        )}
+
+        {/* Ambiances & Instant Radios (10 Moods) */}
+        <section className="space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Radio className="w-4.5 h-4.5 text-[#1ED760]" />
+                <h2 className="font-display font-bold text-xl text-white">
+                  Ambiances &amp; Radios Instantanées
+                </h2>
+              </div>
+              <p className="text-xs text-[#8b93a4] mt-1">
+                Lancez une radio continue de 60 morceaux complets adaptée à votre moment
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenMoods}
+              className="text-xs font-semibold text-[#9ca3b0] hover:text-white transition-colors cursor-pointer shrink-0"
+            >
+              Voir les 10 ambiances →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {CATALOG_MOODS.map((mood) => {
+              const count = moodCounts[mood.bit] || 0;
               return (
-                <button
-                  key={pl.id}
-                  type="button"
-                  onClick={() => onOpenPlaylist(pl.id)}
-                  className="group flex items-center gap-3.5 h-16 rounded-md bg-white/[0.07] hover:bg-white/[0.14] overflow-hidden pr-4 transition-colors text-left cursor-pointer"
+                <div
+                  key={mood.bit}
+                  className={`group p-4 rounded-2xl bg-gradient-to-br ${mood.gradient} border border-white/[0.08] hover:border-white/20 transition-all flex flex-col justify-between min-h-[118px] relative overflow-hidden`}
                 >
-                  <AlbumCover
-                    src={cover}
-                    alt={pl.name}
-                    sizeClass="w-16 h-16"
-                    roundedClass="rounded-none"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-white truncate">
-                      {pl.name}
+                  <button
+                    type="button"
+                    onClick={() => onOpenAllTracks('all', mood.bit)}
+                    className="text-left flex-1 flex flex-col justify-between cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-display font-bold text-[15px] text-white block">
+                        {mood.name}
+                      </span>
+                      <p className="text-[11.5px] text-white/70 line-clamp-2 mt-1 leading-snug">
+                        {mood.subtitle}
+                      </p>
+                    </div>
+                    <span className="text-[11px] font-mono-tabular text-white/60 mt-3 block">
+                      {count.toLocaleString('fr-FR')} titres
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onPlaySmartMix('all', mood.bit)}
+                    title={`Lancer la radio ${mood.name}`}
+                    aria-label={`Lancer la radio ${mood.name}`}
+                    className="absolute right-3 bottom-3 w-9 h-9 rounded-full bg-[#1ED760] hover:bg-[#22e668] text-black flex items-center justify-center shadow-lg opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all cursor-pointer"
+                  >
+                    <Play className="w-4 h-4 fill-black ml-0.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* 14 Musical Genres Grid */}
+        <section className="space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h2 className="font-display font-bold text-xl text-white">
+                Explorer les 14 univers musicaux
+              </h2>
+              <p className="text-xs text-[#8b93a4] mt-1">
+                Cliquez sur un univers pour filtrer le catalogue ou lancer une radio thématique
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenAllTracks('all')}
+              className="text-xs font-semibold text-[#9ca3b0] hover:text-white transition-colors cursor-pointer shrink-0"
+            >
+              Tout afficher ({catalogCount.toLocaleString('fr-FR')}) →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+            {CATALOG_GENRES.map((g) => {
+              const count = genreCounts[g.name] || 0;
+              return (
+                <div
+                  key={g.name}
+                  className={`group p-4 rounded-2xl bg-gradient-to-br ${g.glowClass} border border-white/[0.08] hover:border-white/20 transition-all flex flex-col justify-between min-h-[116px] relative`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenAllTracks(g.name)}
+                    className="text-left flex-1 flex flex-col justify-between cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-display font-bold text-[15.5px] text-white">
+                        {g.name}
+                      </span>
+                      <span
+                        className="px-2 py-0.5 rounded-full bg-black/50 border border-white/10 text-[10.5px] font-mono-tabular font-bold shrink-0"
+                        style={{ color: g.accent }}
+                      >
+                        {count.toLocaleString('fr-FR')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#b0b7c6] line-clamp-2 mt-2 pr-9 leading-relaxed">
+                      {g.subtitle}
                     </p>
-                    <p className="text-xs text-[#b3b3b3] font-mono-tabular">
-                      {pl.trackIds.length}{' '}
-                      {pl.trackIds.length > 1 ? 'titres' : 'titre'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onPlaySmartMix(g.name)}
+                    title={`Mix aléatoire ${g.name}`}
+                    aria-label={`Mix aléatoire ${g.name}`}
+                    className="absolute right-3.5 bottom-3.5 w-8.5 h-8.5 rounded-full bg-white/10 hover:bg-[#1ED760] text-white hover:text-black flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Curated Shelves */}
+        {shelves.map(
+          (shelf) =>
+            shelf.tracks.length > 0 && (
+              <section key={shelf.genre} className="space-y-4">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="font-display font-bold text-xl text-white">
+                      {shelf.title}
+                    </h2>
+                    <p className="text-xs text-[#8b93a4] mt-0.5">
+                      {shelf.subtitle}
                     </p>
                   </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Recently Played (only shown after user actually listens to something!) */}
-      {recentTracks.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-4 h-4 text-[#1ED760]" />
-            <h2 className="font-display font-bold text-xl text-white">
-              Écoutés récemment
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {recentTracks
-              .slice(0, 5)
-              .map((t) => renderTrackCard(t, recentTracks))}
-          </div>
-        </div>
-      )}
-
-      {/* Explore by Genre (9 Curated YouTube Full-Clip Categories) */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="font-display font-bold text-xl text-white">
-              Parcourir par univers musical
-            </h2>
-            <p className="text-xs text-[#b3b3b3] mt-0.5">
-              100 % clips et morceaux complets via YouTube — aucun extrait coupé à 30 secondes
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onOpenAllTracks('all')}
-            className="text-xs font-semibold text-[#b3b3b3] hover:text-white transition-colors cursor-pointer"
-          >
-            Tout voir ({tracks.length.toLocaleString('fr-FR')})
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-          {GENRE_CARDS.map((card) => {
-            const count = genreCounts[card.genre] || 0;
-            return (
-              <button
-                key={card.genre}
-                type="button"
-                onClick={() => onOpenAllTracks(card.genre)}
-                className={`p-4 rounded-xl bg-gradient-to-br ${card.gradient} border border-white/[0.08] hover:border-white/25 hover:brightness-110 transition-all text-left cursor-pointer flex flex-col justify-between min-h-[108px]`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-display font-bold text-base text-white">
-                    {card.genre}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full bg-black/45 text-[#1ED760] text-[11px] font-mono-tabular font-bold shrink-0">
-                    {count.toLocaleString('fr-FR')} titres
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onOpenAllTracks(shelf.genre)}
+                    className="text-xs font-semibold text-[#9ca3b0] hover:text-white transition-colors cursor-pointer shrink-0"
+                  >
+                    Voir les{' '}
+                    {(genreCounts[shelf.genre] || shelf.tracks.length).toLocaleString(
+                      'fr-FR'
+                    )}{' '}
+                    titres →
+                  </button>
                 </div>
-                <p className="text-xs text-white/75 line-clamp-2 mt-2">
-                  {card.subtitle}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {shelf.tracks.map((t) => renderTrackCard(t, shelf.tracks))}
+                </div>
+              </section>
+            )
+        )}
       </div>
-
-      {/* Scène Française */}
-      {frenchScene.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-display font-bold text-xl text-white">
-                Scène Française &amp; Variété
-              </h2>
-              <p className="text-xs text-[#b3b3b3] mt-0.5">
-                Stromae, Angèle, Indila, Céline Dion, Indochine, Clara Luciani…
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenAllTracks('Scène Française')}
-              className="text-xs font-semibold text-[#b3b3b3] hover:text-white cursor-pointer"
-            >
-              Voir les {genreCounts['Scène Française'] || frenchScene.length}{' '}
-              titres
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {frenchScene.map((t) => renderTrackCard(t, frenchScene))}
-          </div>
-        </div>
-      )}
-
-      {/* Rap Français */}
-      {rapFr.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-display font-bold text-xl text-white">
-                Rap Français &amp; Urbain
-              </h2>
-              <p className="text-xs text-[#b3b3b3] mt-0.5">
-                Orelsan, Nekfeu, Damso, Ninho, PNL, Hamza, Gims, Jul, Werenoi…
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenAllTracks('Rap FR')}
-              className="text-xs font-semibold text-[#b3b3b3] hover:text-white cursor-pointer"
-            >
-              Voir les {genreCounts['Rap FR'] || rapFr.length} titres
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {rapFr.map((t) => renderTrackCard(t, rapFr))}
-          </div>
-        </div>
-      )}
-
-      {/* Pop Internationale */}
-      {popHits.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-display font-bold text-xl text-white">
-                Hits Mondiaux &amp; Pop
-              </h2>
-              <p className="text-xs text-[#b3b3b3] mt-0.5">
-                The Weeknd, Billie Eilish, Dua Lipa, Taylor Swift, Bruno Mars…
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenAllTracks('Pop')}
-              className="text-xs font-semibold text-[#b3b3b3] hover:text-white cursor-pointer"
-            >
-              Voir les {(genreCounts['Pop'] || popHits.length).toLocaleString('fr-FR')}{' '}
-              titres
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {popHits.map((t) => renderTrackCard(t, popHits))}
-          </div>
-        </div>
-      )}
-
-      {/* Rock & Légendes */}
-      {rockLegends.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-display font-bold text-xl text-white">
-                Rock &amp; Légendes
-              </h2>
-              <p className="text-xs text-[#b3b3b3] mt-0.5">
-                Queen, Nirvana, Pink Floyd, The Beatles, AC/DC, Linkin Park…
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenAllTracks('Rock & Légendes')}
-              className="text-xs font-semibold text-[#b3b3b3] hover:text-white cursor-pointer"
-            >
-              Voir les {genreCounts['Rock & Légendes'] || rockLegends.length}{' '}
-              titres
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {rockLegends.map((t) => renderTrackCard(t, rockLegends))}
-          </div>
-        </div>
-      )}
-
-      {/* Électro & Dance */}
-      {electroBeats.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-display font-bold text-xl text-white">
-                Électro, House &amp; Club
-              </h2>
-              <p className="text-xs text-[#b3b3b3] mt-0.5">
-                Daft Punk, Avicii, David Guetta, DJ Snake, Calvin Harris, Justice…
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => onOpenAllTracks('Électro & Dance')}
-              className="text-xs font-semibold text-[#b3b3b3] hover:text-white cursor-pointer"
-            >
-              Voir les {genreCounts['Électro & Dance'] || electroBeats.length}{' '}
-              titres
-            </button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4">
-            {electroBeats.map((t) => renderTrackCard(t, electroBeats))}
-          </div>
-        </div>
-      )}
     </div>
   );
 });
