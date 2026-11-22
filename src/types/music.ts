@@ -2,9 +2,26 @@ export type RepeatMode = 'off' | 'all' | 'one';
 
 export type SortKey = 'default' | 'title' | 'artist' | 'album' | 'duration';
 
-export type ActiveView = 'home' | 'liked' | 'search' | 'playlist' | 'all-tracks';
+export type ActiveView =
+  | 'home'
+  | 'liked'
+  | 'search'
+  | 'playlist'
+  | 'all-tracks'
+  | 'artist';
 
-export type AudioSourceKind = 'local-idb' | 'local-folder' | 'youtube' | 'stream' | 'none';
+export type AudioSourceKind =
+  | 'local-idb'
+  | 'local-folder'
+  | 'youtube'
+  | 'deezer'
+  | 'itunes'
+  | 'stream'
+  | 'none';
+
+export type CatalogProviderFilter = 'all' | 'deezer' | 'itunes' | 'local';
+
+export type SleepTimerOption = 0 | 15 | 30 | 45 | 60 | 'end-of-track';
 
 export interface Track {
   id: string;
@@ -19,6 +36,10 @@ export interface Track {
   hasClip?: boolean;
   coverUrl: string;
   previewUrl: string;
+  fallbackPreviewUrl?: string;
+  deezerId?: number;
+  itunesId?: number;
+  releaseYear?: string;
   dailymotionId?: string;
   soundcloudTrackId?: number;
   youtubeVideoIds?: string[];
@@ -50,7 +71,32 @@ export interface SearchResultTrack {
   explicit: boolean;
   coverUrl: string;
   previewUrl: string;
-  source: 'deezer' | 'itunes';
+  fallbackPreviewUrl?: string;
+  deezerId?: number;
+  itunesId?: number;
+  genre?: string;
+  releaseYear?: string;
+  youtubeVideoId?: string;
+  source: 'deezer' | 'itunes' | 'youtube';
+  providerSources?: Array<'deezer' | 'itunes'>;
+}
+
+export interface ResolvedYouTubeMeta {
+  videoId: string;
+  title: string;
+  artist: string;
+  rawTitle: string;
+  authorName: string;
+  coverUrl: string;
+}
+
+export interface SpotLocalBackupData {
+  version: 2;
+  exportedAt: string;
+  customTracks: Track[];
+  trackOverrides: Record<string, Partial<Track>>;
+  playlists: Playlist[];
+  recentTrackIds: string[];
 }
 
 declare global {

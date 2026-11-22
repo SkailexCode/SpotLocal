@@ -1,0 +1,19 @@
+{
+  "name": "SpotLocal — Lecteur Musical Web & Local",
+  "short_name": "SpotLocal",
+  "description": "Lecteur musical Web open-source sans clé API : MP3 locaux, liens YouTube, Apple Music & Deezer.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

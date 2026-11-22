@@ -1,20 +1,100 @@
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 
 const ROOT_DIR = process.env.SPOTLOCAL_APP_ROOT
   ? path.resolve(process.env.SPOTLOCAL_APP_ROOT)
-  : import.meta.url
-    ? path.dirname(fileURLToPath(import.meta.url))
-    : process.cwd();
+  : process.cwd();
 
 const PORT = Number(process.env.PORT || 3000);
+const BIND_HOST =
+  process.env.SPOTLOCAL_DESKTOP === '1' ? '127.0.0.1' : '0.0.0.0';
 const MUSIC_DIR = process.env.SPOTLOCAL_MUSIC_DIR
   ? path.resolve(process.env.SPOTLOCAL_MUSIC_DIR)
   : path.resolve(ROOT_DIR, 'music');
 const EXE_PATH = path.resolve(ROOT_DIR, 'release', 'SpotLocal-Portable.exe');
-const EXE_ZIP_PATH = path.resolve(ROOT_DIR, 'release', 'SpotLocal-Portable-Windows.zip');
+const EXE_ZIP_PATH = path.resolve(
+  ROOT_DIR,
+  'release',
+  'SpotLocal-Portable-Windows.zip'
+);
+
+class TtlCache<T> {
+  private store = new Map<string, { value: T; expiresAt: number }>();
+  private readonly ttlMs: number;
+  private readonly maxEntries: number;
+
+  constructor(ttlMs: number, maxEntries = 300) {
+    this.ttlMs = ttlMs;
+    this.maxEntries = maxEntries;
+  }
+
+  get(key: string): T | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      return undefined;
+    }
+    this.store.delete(key);
+    this.store.set(key, entry);
+    return entry.value;
+  }
+
+  set(key: string, value: T): void {
+    if (this.store.has(key)) {
+      this.store.delete(key);
+    } else if (this.store.size >= this.maxEntries) {
+      const oldestKey = this.store.keys().next().value;
+      if (oldestKey !== undefined) this.store.delete(oldestKey);
+    }
+    this.store.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+  }
+}
+
+interface CatalogSearchResult {
+  externalId: string;
+  deezerId?: number;
+  itunesId?: number;
+  title: string;
+  artist: string;
+  album: string;
+  durationSec: number;
+  durationLabel: string;
+  explicit: boolean;
+  coverUrl: string;
+  previewUrl: string;
+  fallbackPreviewUrl?: string;
+  genre?: string;
+  releaseYear?: string;
+  source: 'deezer' | 'itunes';
+  providerSources?: Array<'deezer' | 'itunes'>;
+}
+
+interface SearchApiPayload {
+  results: CatalogSearchResult[];
+  deezer: CatalogSearchResult[];
+  itunes: CatalogSearchResult[];
+}
+
+// Keep TTL to 10 minutes so Deezer's signed hdnea= preview tokens remain fresh
+const searchApiCache = new TtlCache<SearchApiPayload>(10 * 60 * 1000, 250);
+const chartsApiCache = new TtlCache<CatalogSearchResult[]>(15 * 60 * 1000, 4);
+const youtubeIdsCache = new TtlCache<string[]>(60 * 60 * 1000, 300);
+const youtubeMetaCache = new TtlCache<{
+  title: string;
+  author_name: string;
+  thumbnail_url: string;
+}>(60 * 60 * 1000, 300);
+const previewCache = new TtlCache<{
+  previewUrl: string;
+  fallbackPreviewUrl?: string;
+  coverUrl: string;
+  deezerId?: number;
+  itunesId?: number;
+  provider: 'itunes' | 'deezer';
+}>(10 * 60 * 1000, 300);
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -44,6 +124,61 @@ function formatSec(seconds: number): string {
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function normKey(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function mergeServerCatalog(
+  itunesList: CatalogSearchResult[],
+  deezerList: CatalogSearchResult[]
+): CatalogSearchResult[] {
+  const bySig = new Map<string, CatalogSearchResult>();
+  for (const item of [...itunesList, ...deezerList]) {
+    const cleanTitle = normKey(
+      item.title.replace(
+        /\s*[\(\[](?:feat\.?|ft\.?|with|remaster(?:ed)?|radio edit)[^\)\]]*[\)\]]/gi,
+        ''
+      )
+    );
+    const primaryArtist = normKey(item.artist.split(/[,&]/)[0] || item.artist);
+    const sig = `${cleanTitle}::${primaryArtist}`;
+    const existing = bySig.get(sig);
+    if (!existing) {
+      bySig.set(sig, { ...item, providerSources: [item.source] });
+      continue;
+    }
+
+    const providers = Array.from(
+      new Set([...(existing.providerSources || []), item.source])
+    );
+    bySig.set(sig, {
+      ...existing,
+      deezerId: existing.deezerId ?? item.deezerId,
+      itunesId: existing.itunesId ?? item.itunesId,
+      genre: existing.genre || item.genre,
+      releaseYear: existing.releaseYear || item.releaseYear,
+      coverUrl:
+        existing.coverUrl.includes('600x600') || !item.coverUrl
+          ? existing.coverUrl
+          : item.coverUrl,
+      previewUrl: existing.previewUrl || item.previewUrl,
+      fallbackPreviewUrl:
+        existing.fallbackPreviewUrl ||
+        (item.previewUrl && item.previewUrl !== existing.previewUrl
+          ? item.previewUrl
+          : undefined),
+      providerSources: providers,
+    });
+  }
+  return Array.from(bySig.values());
 }
 
 function scanLocalMusicDir(): Array<{
@@ -79,24 +214,61 @@ function scanLocalMusicDir(): Array<{
   return results;
 }
 
-interface CatalogSearchResult {
-  externalId: string;
-  title: string;
-  artist: string;
-  album: string;
-  durationSec: number;
-  durationLabel: string;
-  explicit: boolean;
-  coverUrl: string;
-  previewUrl: string;
-  source: 'deezer' | 'itunes';
-}
-
-async function searchDeezer(query: string): Promise<CatalogSearchResult[]> {
+async function searchDeezer(
+  query: string,
+  limit = 20
+): Promise<CatalogSearchResult[]> {
   const res = await fetch(
-    `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=18`
+    `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`,
+    { signal: AbortSignal.timeout(4500) }
   );
   if (!res.ok) throw new Error(`Deezer HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    data?: Array<{
+      id: number;
+      title: string;
+      duration: number;
+      explicit_lyrics?: boolean;
+      preview?: string;
+      release_date?: string;
+      artist?: { name?: string };
+      album?: {
+        title?: string;
+        cover_medium?: string;
+        cover_big?: string;
+        cover_xl?: string;
+      };
+    }>;
+  };
+  return (data.data || [])
+    .filter((item) => item.title && item.artist?.name)
+    .map((item) => ({
+      externalId: `dz-${item.id}`,
+      deezerId: item.id,
+      title: item.title,
+      artist: item.artist?.name || 'Artiste inconnu',
+      album: item.album?.title || item.title,
+      durationSec: item.duration || 180,
+      durationLabel: formatSec(item.duration || 180),
+      explicit: Boolean(item.explicit_lyrics),
+      coverUrl:
+        item.album?.cover_big ||
+        item.album?.cover_xl ||
+        item.album?.cover_medium ||
+        '',
+      previewUrl: item.preview || '',
+      releaseYear: item.release_date?.slice(0, 4),
+      source: 'deezer' as const,
+      providerSources: ['deezer'],
+    }));
+}
+
+async function fetchDeezerChart(limit = 15): Promise<CatalogSearchResult[]> {
+  const res = await fetch(
+    `https://api.deezer.com/chart/0/tracks?limit=${limit}`,
+    { signal: AbortSignal.timeout(4500) }
+  );
+  if (!res.ok) throw new Error(`Deezer Chart HTTP ${res.status}`);
   const data = (await res.json()) as {
     data?: Array<{
       id: number;
@@ -112,21 +284,27 @@ async function searchDeezer(query: string): Promise<CatalogSearchResult[]> {
     .filter((item) => item.title && item.artist?.name)
     .map((item) => ({
       externalId: `dz-${item.id}`,
+      deezerId: item.id,
       title: item.title,
       artist: item.artist?.name || 'Artiste inconnu',
       album: item.album?.title || item.title,
       durationSec: item.duration || 180,
       durationLabel: formatSec(item.duration || 180),
       explicit: Boolean(item.explicit_lyrics),
-      coverUrl: item.album?.cover_medium || item.album?.cover_big || '',
+      coverUrl: item.album?.cover_big || item.album?.cover_medium || '',
       previewUrl: item.preview || '',
       source: 'deezer' as const,
+      providerSources: ['deezer'],
     }));
 }
 
-async function searchItunes(query: string): Promise<CatalogSearchResult[]> {
+async function searchItunes(
+  query: string,
+  limit = 20
+): Promise<CatalogSearchResult[]> {
   const res = await fetch(
-    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&country=FR&limit=18`
+    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=FR&limit=${limit}`,
+    { signal: AbortSignal.timeout(4500) }
   );
   if (!res.ok) throw new Error(`iTunes HTTP ${res.status}`);
   const data = (await res.json()) as {
@@ -139,6 +317,8 @@ async function searchItunes(query: string): Promise<CatalogSearchResult[]> {
       trackExplicitness?: string;
       artworkUrl100?: string;
       previewUrl?: string;
+      primaryGenreName?: string;
+      releaseDate?: string;
     }>;
   };
   return (data.results || [])
@@ -147,6 +327,7 @@ async function searchItunes(query: string): Promise<CatalogSearchResult[]> {
       const sec = Math.round((item.trackTimeMillis || 180000) / 1000);
       return {
         externalId: `it-${item.trackId}`,
+        itunesId: item.trackId,
         title: item.trackName || '',
         artist: item.artistName || '',
         album: item.collectionName || item.trackName || '',
@@ -154,10 +335,13 @@ async function searchItunes(query: string): Promise<CatalogSearchResult[]> {
         durationLabel: formatSec(sec),
         explicit: item.trackExplicitness === 'explicit',
         coverUrl: item.artworkUrl100
-          ? item.artworkUrl100.replace('100x100bb', '400x400bb')
+          ? item.artworkUrl100.replace('100x100bb', '600x600bb')
           : '',
         previewUrl: item.previewUrl || '',
+        genre: item.primaryGenreName,
+        releaseYear: item.releaseDate?.slice(0, 4),
         source: 'itunes' as const,
+        providerSources: ['itunes'],
       };
     });
 }
@@ -168,7 +352,7 @@ async function findYoutubeVideoIds(query: string): Promise<string[]> {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(4500),
       body: JSON.stringify({
         context: {
           client: {
@@ -187,13 +371,13 @@ async function findYoutubeVideoIds(query: string): Promise<string[]> {
   const matches = [...text.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map(
     (m) => m[1]
   );
-  const candidates = [...new Set(matches)].slice(0, 6);
+  const candidates = [...new Set(matches)].slice(0, 5);
   const verified = await Promise.all(
     candidates.map(async (id) => {
       try {
         const oe = await fetch(
           `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`,
-          { signal: AbortSignal.timeout(3000) }
+          { signal: AbortSignal.timeout(2500) }
         );
         return oe.ok ? id : null;
       } catch {
@@ -204,336 +388,40 @@ async function findYoutubeVideoIds(query: string): Promise<string[]> {
   return verified.filter((x): x is string => Boolean(x)).slice(0, 4);
 }
 
-const ALLOWED_STREAM_DOMAINS = [
-  'dailymotion.com',
-  'dmcdn.net',
-  'soundcloud.com',
-  'soundcloud.cloud',
-  'sndcdn.com',
-];
-
-function isAllowedStreamUrl(rawUrl: string): boolean {
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'https:') return false;
-    const host = parsed.hostname.toLowerCase();
-    return ALLOWED_STREAM_DOMAINS.some(
-      (domain) => host === domain || host.endsWith(`.${domain}`)
-    );
-  } catch {
-    return false;
-  }
-}
-
-let cachedScClientId = '';
-let cachedScClientIdAt = 0;
-
-async function getSoundCloudClientId(): Promise<string> {
-  if (cachedScClientId && Date.now() - cachedScClientIdAt < 1000 * 60 * 60) {
-    return cachedScClientId;
-  }
-  try {
-    const pageRes = await fetch('https://soundcloud.com/search/sounds?q=music', {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!pageRes.ok) return cachedScClientId;
-    const html = await pageRes.text();
-    const scripts = [
-      ...html.matchAll(/https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js/g),
-    ].map((m) => m[0]);
-    for (const sUrl of scripts.reverse()) {
-      const jsRes = await fetch(sUrl, { signal: AbortSignal.timeout(5000) });
-      if (!jsRes.ok) continue;
-      const js = await jsRes.text();
-      const match = js.match(/client_id:"([a-zA-Z0-9]{20,40})"/);
-      if (match) {
-        cachedScClientId = match[1];
-        cachedScClientIdAt = Date.now();
-        return cachedScClientId;
-      }
-    }
-  } catch {
-    // Ignore client_id extraction failure
-  }
-  return cachedScClientId;
-}
-
-interface ResolvedFullStream {
-  kind: 'hls' | 'audio';
-  url: string;
-  durationSec?: number;
-  source: 'dailymotion' | 'soundcloud';
-}
-
-async function resolveDailymotionStream(
-  dmId: string
-): Promise<ResolvedFullStream | null> {
-  try {
-    const res = await fetch(
-      `https://www.dailymotion.com/player/metadata/video/${encodeURIComponent(dmId)}`,
-      {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-        signal: AbortSignal.timeout(6000),
-      }
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      duration?: number;
-      error?: unknown;
-      qualities?: Record<string, Array<{ type?: string; url?: string }>>;
-    };
-    if (data.error || !data.qualities) return null;
-    const autoList = data.qualities.auto || [];
-    const m3u8Entry = autoList.find((q) => q.url);
-    if (!m3u8Entry?.url || !isAllowedStreamUrl(m3u8Entry.url)) return null;
-    return {
-      kind: 'hls',
-      url: `/api/music/hls-proxy?url=${encodeURIComponent(m3u8Entry.url)}`,
-      durationSec: data.duration,
-      source: 'dailymotion',
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function resolveSoundCloudStream(
-  scId: number
-): Promise<ResolvedFullStream | null> {
-  try {
-    const clientId = await getSoundCloudClientId();
-    if (!clientId) return null;
-    const res = await fetch(
-      `https://api-v2.soundcloud.com/tracks/${scId}?client_id=${encodeURIComponent(clientId)}`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    if (!res.ok) return null;
-    const track = (await res.json()) as {
-      duration?: number;
-      policy?: string;
-      media?: {
-        transcodings?: Array<{
-          url?: string;
-          snipped?: boolean;
-          format?: { protocol?: string; mime_type?: string };
-        }>;
-      };
-    };
-    if (track.policy === 'SNIP') return null;
-    const transcodings = track.media?.transcodings || [];
-    const progressive = transcodings.find(
-      (c) => !c.snipped && c.format?.protocol === 'progressive' && c.url
-    );
-    const hls = transcodings.find(
-      (c) => !c.snipped && c.format?.protocol === 'hls' && c.url
-    );
-    const chosen = progressive || hls;
-    if (!chosen?.url) return null;
-
-    const streamRes = await fetch(
-      `${chosen.url}?client_id=${encodeURIComponent(clientId)}`,
-      { signal: AbortSignal.timeout(6000) }
-    );
-    if (!streamRes.ok) return null;
-    const streamData = (await streamRes.json()) as { url?: string };
-    if (!streamData.url || !isAllowedStreamUrl(streamData.url)) return null;
-
-    const isHls = chosen.format?.protocol === 'hls';
-    return {
-      kind: isHls ? 'hls' : 'audio',
-      url: `/api/music/hls-proxy?url=${encodeURIComponent(streamData.url)}`,
-      durationSec: track.duration ? Math.round(track.duration / 1000) : undefined,
-      source: 'soundcloud',
-    };
-  } catch {
-    return null;
-  }
-}
-
-function normMatchText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9 ]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-const BANNED_STREAM_RE =
-  /\b(karaoke|instrumental|playback|backing track|piano tutorial|guitar lesson|reacts?|reaction|interview|teaser|trailer|parody|parodie|tutoriel|episode)\b/i;
-
-async function searchFullStreamDynamic(
-  title: string,
-  artist: string,
-  expectedDurationSec: number
-): Promise<ResolvedFullStream | null> {
-  const firstArtist = artist.split(',')[0].trim();
-  const cleanTitle = title
-    .replace(/\s*[\(\[](?:feat\.?|ft\.?|with|remaster(?:ed)?|live|deluxe|bonus track)[^\)\]]*[\)\]]/gi, '')
-    .replace(/\s*-\s*(?:Electric Version|Remaster(?:ed)?(?:\s*\d{4})?|\d{4}\s*Remaster(?:ed)?)/gi, '')
-    .replace(/\s*\(1\)/g, '')
-    .replace(/\s+(?:feat\.?|ft\.?)\s+.+$/i, '')
-    .trim();
-  const titleWords = normMatchText(cleanTitle)
-    .split(' ')
-    .filter((w) => w.length >= 3);
-  const artistWords = normMatchText(firstArtist)
-    .split(' ')
-    .filter((w) => w.length >= 3);
-
-  try {
-    const dmRes = await fetch(
-      `https://api.dailymotion.com/videos?search=${encodeURIComponent(
-        `${firstArtist} ${cleanTitle}`
-      )}&fields=id,title,duration&limit=12`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (dmRes.ok) {
-      const dmData = (await dmRes.json()) as {
-        list?: Array<{ id: string; title: string; duration: number }>;
-      };
-      const hits = (dmData.list || []).filter((v) => {
-        if (BANNED_STREAM_RE.test(v.title)) return false;
-        if (v.duration < 60) return false;
-        if (
-          expectedDurationSec > 60 &&
-          Math.abs(v.duration - expectedDurationSec) > 75
-        ) {
-          return false;
-        }
-        const n = normMatchText(v.title);
-        const hasTitle =
-          titleWords.length > 0 && titleWords.every((w) => n.includes(w));
-        const hasArtist =
-          n.includes(normMatchText(firstArtist)) ||
-          (artistWords.length > 0 && artistWords.every((w) => n.includes(w)));
-        return hasTitle && hasArtist;
-      });
-      hits.sort(
-        (a, b) =>
-          Math.abs(a.duration - expectedDurationSec) -
-          Math.abs(b.duration - expectedDurationSec)
-      );
-      if (hits[0]) {
-        const resolved = await resolveDailymotionStream(hits[0].id);
-        if (resolved) return resolved;
-      }
-    }
-  } catch {
-    // Continue to SoundCloud
-  }
-
-  try {
-    const clientId = await getSoundCloudClientId();
-    if (clientId) {
-      const scRes = await fetch(
-        `https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(
-          `${cleanTitle} ${firstArtist}`
-        )}&client_id=${encodeURIComponent(clientId)}&limit=12`,
-        { signal: AbortSignal.timeout(5000) }
-      );
-      if (scRes.ok) {
-        const scData = (await scRes.json()) as {
-          collection?: Array<{
-            id: number;
-            title?: string;
-            duration?: number;
-            policy?: string;
-            user?: { username?: string };
-            media?: {
-              transcodings?: Array<{
-                snipped?: boolean;
-                format?: { protocol?: string };
-              }>;
-            };
-          }>;
-        };
-        const hits = (scData.collection || []).filter((item) => {
-          const dur = Math.round((item.duration || 0) / 1000);
-          if (item.policy === 'SNIP' || dur < 60) return false;
-          if (
-            expectedDurationSec > 60 &&
-            Math.abs(dur - expectedDurationSec) > 90
-          ) {
-            return false;
-          }
-          const openTc = (item.media?.transcodings || []).some(
-            (tc) =>
-              !tc.snipped &&
-              (tc.format?.protocol === 'progressive' ||
-                tc.format?.protocol === 'hls')
-          );
-          if (!openTc || BANNED_STREAM_RE.test(item.title || '')) return false;
-          const blob = normMatchText(
-            `${item.title || ''} ${item.user?.username || ''}`
-          );
-          const hasTitle =
-            titleWords.length > 0 && titleWords.every((w) => blob.includes(w));
-          const hasArtist =
-            blob.includes(normMatchText(firstArtist)) ||
-            (artistWords.length > 0 &&
-              artistWords.every((w) => blob.includes(w)));
-          return hasTitle && hasArtist;
-        });
-        hits.sort(
-          (a, b) =>
-            Math.abs((a.duration || 0) / 1000 - expectedDurationSec) -
-            Math.abs((b.duration || 0) / 1000 - expectedDurationSec)
-        );
-        if (hits[0]) {
-          const resolved = await resolveSoundCloudStream(hits[0].id);
-          if (resolved) return resolved;
-        }
-      }
-    }
-  } catch {
-    // Fallback
-  }
-
-  return null;
-}
-
-function rewriteM3u8Content(content: string, baseUrl: string): string {
-  const lines = content.split(/\r?\n/);
-  return lines
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) return line;
-      if (trimmed.startsWith('#')) {
-        return line.replace(/URI="([^"]+)"/g, (_m, uri: string) => {
-          try {
-            const abs = new URL(uri, baseUrl).href;
-            return `URI="/api/music/hls-proxy?url=${encodeURIComponent(abs)}"`;
-          } catch {
-            return `URI="${uri}"`;
-          }
-        });
-      }
-      try {
-        const abs = new URL(trimmed, baseUrl).href;
-        return `/api/music/hls-proxy?url=${encodeURIComponent(abs)}`;
-      } catch {
-        return line;
-      }
-    })
-    .join('\n');
-}
-
 async function createServer() {
   const app = express();
+  app.disable('x-powered-by');
+
+  // Lightweight zero-dependency Gzip compression for JSON API payloads > 1 KB
+  app.use('/api', (req, res, next) => {
+    const acceptEnc = String(req.headers['accept-encoding'] || '');
+    if (!acceptEnc.includes('gzip')) {
+      next();
+      return;
+    }
+    const origJson = res.json.bind(res);
+    res.json = ((body: unknown) => {
+      const serialized = JSON.stringify(body);
+      if (serialized.length < 1024) {
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.send(serialized);
+      }
+      const compressed = zlib.gzipSync(Buffer.from(serialized, 'utf-8'));
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Content-Encoding', 'gzip');
+      res.setHeader('Vary', 'Accept-Encoding');
+      res.setHeader('Content-Length', compressed.length);
+      return res.send(compressed);
+    }) as typeof res.json;
+    next();
+  });
 
   app.get('/api/health', (_req, res) => {
     const localFiles = scanLocalMusicDir();
     res.json({
       ok: true,
+      mode: process.env.SPOTLOCAL_DESKTOP === '1' ? 'desktop' : 'web',
+      apis: ['apple-itunes', 'deezer', 'youtube-oembed'],
       musicDir: MUSIC_DIR,
       localCount: localFiles.length,
     });
@@ -565,49 +453,34 @@ async function createServer() {
     });
   });
 
-  const streamDownloadFile = (
+  const streamStaticFileWithRange = (
     req: express.Request,
     res: express.Response,
     filePath: string,
-    downloadName: string,
-    contentType: string
+    contentType: string,
+    downloadName?: string
   ) => {
     if (!fs.existsSync(filePath)) {
-      res.status(404).send(`Fichier ${downloadName} introuvable.`);
+      res.status(404).json({ error: 'Fichier introuvable' });
       return;
     }
     const stat = fs.statSync(filePath);
     const total = stat.size;
-    const startParam = req.query.start !== undefined ? Number(req.query.start) : null;
-    const endParam = req.query.end !== undefined ? Number(req.query.end) : null;
-
-    if (
-      startParam !== null &&
-      endParam !== null &&
-      Number.isInteger(startParam) &&
-      Number.isInteger(endParam) &&
-      startParam >= 0 &&
-      endParam >= startParam &&
-      startParam < total
-    ) {
-      const clampedEnd = Math.min(endParam, total - 1);
-      const len = clampedEnd - startParam + 1;
-      res.writeHead(200, {
-        'Content-Type': 'application/octet-stream',
-        'Content-Length': len,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-store',
-      });
-      fs.createReadStream(filePath, { start: startParam, end: clampedEnd }).pipe(res);
-      return;
-    }
-
     const range = req.headers.range;
+
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = Number.parseInt(parts[0], 10);
-      const end = parts[1] ? Math.min(Number.parseInt(parts[1], 10), total - 1) : total - 1;
-      if (!Number.isFinite(start) || start < 0 || start >= total || end < start) {
+      const end = parts[1]
+        ? Math.min(Number.parseInt(parts[1], 10), total - 1)
+        : total - 1;
+      if (
+        !Number.isFinite(start) ||
+        !Number.isFinite(end) ||
+        start < 0 ||
+        start >= total ||
+        end < start
+      ) {
         res.status(416).setHeader('Content-Range', `bytes */${total}`).end();
         return;
       }
@@ -616,127 +489,41 @@ async function createServer() {
         'Accept-Ranges': 'bytes',
         'Content-Length': end - start + 1,
         'Content-Type': contentType,
-        'Cache-Control': 'no-store',
       });
       fs.createReadStream(filePath, { start, end }).pipe(res);
       return;
     }
 
-    res.writeHead(200, {
+    const headers: Record<string, string | number> = {
       'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${downloadName}"`,
       'Content-Length': total,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'no-store',
-    });
+    };
+    if (downloadName) {
+      headers['Content-Disposition'] = `attachment; filename="${downloadName}"`;
+    }
+    res.writeHead(200, headers);
     fs.createReadStream(filePath).pipe(res);
   };
 
   app.get('/api/download/exe', (req, res) => {
-    streamDownloadFile(
+    streamStaticFileWithRange(
       req,
       res,
       EXE_PATH,
-      'SpotLocal-Portable.exe',
-      'application/octet-stream'
+      'application/octet-stream',
+      'SpotLocal-Portable.exe'
     );
   });
 
   app.get('/api/download/exe-zip', (req, res) => {
-    streamDownloadFile(
+    streamStaticFileWithRange(
       req,
       res,
       EXE_ZIP_PATH,
-      'SpotLocal-Portable-Windows.zip',
-      'application/zip'
+      'application/zip',
+      'SpotLocal-Portable-Windows.zip'
     );
-  });
-
-  app.get('/api/music/full-stream', async (req, res) => {
-    const dmId = String(req.query.dmId || '').trim();
-    const scIdRaw = String(req.query.scId || '').trim();
-    const scId = scIdRaw ? Number.parseInt(scIdRaw, 10) : 0;
-    const title = String(req.query.title || '').trim();
-    const artist = String(req.query.artist || '').trim();
-    const durationSec = Number.parseInt(String(req.query.durationSec || '180'), 10) || 180;
-
-    let result: ResolvedFullStream | null = null;
-    if (dmId) {
-      result = await resolveDailymotionStream(dmId);
-    }
-    if (!result && scId > 0) {
-      result = await resolveSoundCloudStream(scId);
-    }
-    if (!result && title && artist) {
-      result = await searchFullStreamDynamic(title, artist, durationSec);
-    }
-
-    if (!result) {
-      res.status(404).json({ error: 'Flux complet introuvable' });
-      return;
-    }
-    res.json(result);
-  });
-
-  app.get('/api/music/hls-proxy', async (req, res) => {
-    const targetUrl = String(req.query.url || '').trim();
-    if (!targetUrl || !isAllowedStreamUrl(targetUrl)) {
-      res.status(400).send('URL de flux non autorisée');
-      return;
-    }
-    try {
-      const upstreamHeaders: Record<string, string> = {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      };
-      const rangeHeader = req.headers.range;
-      if (rangeHeader && !targetUrl.includes('.m3u8')) {
-        upstreamHeaders.Range = rangeHeader;
-      }
-
-      const upstream = await fetch(targetUrl, {
-        headers: upstreamHeaders,
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!upstream.ok && upstream.status !== 206) {
-        res.status(upstream.status).send('Flux amont indisponible');
-        return;
-      }
-
-      const contentType = upstream.headers.get('content-type') || '';
-      const isPlaylist =
-        contentType.includes('mpegurl') ||
-        targetUrl.includes('.m3u8');
-
-      if (isPlaylist) {
-        const text = await upstream.text();
-        if (text.trimStart().startsWith('#EXTM3U')) {
-          const rewritten = rewriteM3u8Content(text, upstream.url || targetUrl);
-          res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-          res.setHeader('Cache-Control', 'no-cache');
-          res.send(rewritten);
-          return;
-        }
-        res.setHeader('Content-Type', contentType || 'text/plain');
-        res.send(text);
-        return;
-      }
-
-      const arrayBuf = await upstream.arrayBuffer();
-      const buf = Buffer.from(arrayBuf);
-      if (contentType) {
-        res.setHeader('Content-Type', contentType);
-      }
-      const acceptRanges = upstream.headers.get('accept-ranges');
-      const contentRange = upstream.headers.get('content-range');
-      if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges);
-      if (contentRange) res.setHeader('Content-Range', contentRange);
-      res.setHeader('Content-Length', buf.length);
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      res.status(upstream.status).send(buf);
-    } catch {
-      res.status(502).send('Erreur proxy flux audio');
-    }
   });
 
   app.get('/api/music/youtube', async (req, res) => {
@@ -745,61 +532,169 @@ async function createServer() {
       res.json({ videoIds: [] });
       return;
     }
+    const cacheKey = q.toLowerCase();
+    const cached = youtubeIdsCache.get(cacheKey);
+    if (cached) {
+      res.json({ videoIds: cached, cached: true });
+      return;
+    }
     try {
       const videoIds = await findYoutubeVideoIds(`${q} audio`);
+      if (videoIds.length > 0) {
+        youtubeIdsCache.set(cacheKey, videoIds);
+      }
       res.json({ videoIds });
     } catch {
       res.json({ videoIds: [] });
     }
   });
 
-  app.get('/api/music/search', async (req, res) => {
-    const q = String(req.query.q || '').trim();
-    if (!q) {
-      res.json({ results: [] });
+  app.get('/api/music/youtube-meta', async (req, res) => {
+    const id = String(req.query.id || '').trim();
+    if (!/^[a-zA-Z0-9_-]{11}$/.test(id)) {
+      res.status(400).json({ error: 'Identifiant YouTube invalide' });
+      return;
+    }
+    const cached = youtubeMetaCache.get(id);
+    if (cached) {
+      res.json(cached);
       return;
     }
     try {
-      let results = await searchDeezer(q);
-      if (results.length === 0) {
-        results = await searchItunes(q);
+      const oe = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`,
+        { signal: AbortSignal.timeout(4000) }
+      );
+      if (!oe.ok) {
+        res.status(404).json({ error: 'Métadonnées YouTube introuvables' });
+        return;
       }
-      res.json({ results });
+      const data = (await oe.json()) as {
+        title?: string;
+        author_name?: string;
+        thumbnail_url?: string;
+      };
+      const payload = {
+        title: data.title || `Vidéo YouTube (${id})`,
+        author_name: data.author_name || 'YouTube',
+        thumbnail_url:
+          data.thumbnail_url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      };
+      youtubeMetaCache.set(id, payload);
+      res.json(payload);
     } catch {
-      try {
-        const fallback = await searchItunes(q);
-        res.json({ results: fallback });
-      } catch (err) {
-        res.status(502).json({
-          results: [],
-          error: err instanceof Error ? err.message : 'Erreur de recherche musicale',
-        });
-      }
+      res
+        .status(502)
+        .json({ error: 'Impossible de résoudre la vidéo YouTube' });
     }
   });
 
+  // Parallel Apple iTunes + Deezer Search
+  app.get('/api/music/search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (!q) {
+      res.json({ results: [], deezer: [], itunes: [] });
+      return;
+    }
+    const cacheKey = normKey(q);
+    const cached = searchApiCache.get(cacheKey);
+    if (cached) {
+      res.json({ ...cached, cached: true });
+      return;
+    }
+
+    const [dzSettled, itSettled] = await Promise.allSettled([
+      searchDeezer(q, 20),
+      searchItunes(q, 20),
+    ]);
+
+    const deezer = dzSettled.status === 'fulfilled' ? dzSettled.value : [];
+    const itunes = itSettled.status === 'fulfilled' ? itSettled.value : [];
+
+    if (deezer.length === 0 && itunes.length === 0) {
+      res.status(502).json({
+        results: [],
+        deezer: [],
+        itunes: [],
+        error: 'Catalogues Apple et Deezer momentanément indisponibles',
+      });
+      return;
+    }
+
+    const results = mergeServerCatalog(itunes, deezer);
+    const payload: SearchApiPayload = { results, deezer, itunes };
+    searchApiCache.set(cacheKey, payload);
+    res.json(payload);
+  });
+
+  // Parallel Apple iTunes + Deezer Live Charts
+  app.get('/api/music/charts', async (_req, res) => {
+    const cached = chartsApiCache.get('top-fr');
+    if (cached) {
+      res.json({ results: cached, cached: true });
+      return;
+    }
+
+    const [dzChart, itTop] = await Promise.allSettled([
+      fetchDeezerChart(15),
+      searchItunes('Stromae Angèle The Weeknd Dua Lipa Billie Eilish', 15),
+    ]);
+
+    const dzList = dzChart.status === 'fulfilled' ? dzChart.value : [];
+    const itList = itTop.status === 'fulfilled' ? itTop.value : [];
+    const merged = mergeServerCatalog(itList, dzList).slice(0, 18);
+
+    if (merged.length > 0) {
+      chartsApiCache.set('top-fr', merged);
+    }
+    res.json({ results: merged });
+  });
+
+  // Parallel Apple iTunes + Deezer Preview Stream Resolver
   app.get('/api/music/resolve', async (req, res) => {
     const q = String(req.query.q || '').trim();
     if (!q) {
       res.status(400).json({ error: 'Paramètre q manquant' });
       return;
     }
-    try {
-      const deezer = await searchDeezer(q);
-      const hit = deezer.find((item) => item.previewUrl);
-      if (hit) {
-        res.json({ previewUrl: hit.previewUrl, coverUrl: hit.coverUrl });
-        return;
-      }
-      const itunes = await searchItunes(q);
-      const itHit = itunes.find((item) => item.previewUrl);
-      res.json({
-        previewUrl: itHit?.previewUrl || '',
-        coverUrl: itHit?.coverUrl || '',
-      });
-    } catch {
-      res.status(502).json({ previewUrl: '', coverUrl: '' });
+    const cacheKey = normKey(q);
+    const cached = previewCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
     }
+
+    const [itSettled, dzSettled] = await Promise.allSettled([
+      searchItunes(q, 6),
+      searchDeezer(q, 6),
+    ]);
+
+    const itHit =
+      itSettled.status === 'fulfilled'
+        ? itSettled.value.find((x) => x.previewUrl)
+        : undefined;
+    const dzHit =
+      dzSettled.status === 'fulfilled'
+        ? dzSettled.value.find((x) => x.previewUrl)
+        : undefined;
+
+    if (!itHit && !dzHit) {
+      res.status(502).json({ previewUrl: '', coverUrl: '' });
+      return;
+    }
+
+    const primary = itHit || dzHit!;
+    const secondary = itHit && dzHit ? dzHit : undefined;
+    const payload = {
+      previewUrl: primary.previewUrl,
+      fallbackPreviewUrl: secondary?.previewUrl,
+      coverUrl: primary.coverUrl || secondary?.coverUrl || '',
+      deezerId: dzHit?.deezerId,
+      itunesId: itHit?.itunesId,
+      provider: (itHit ? 'itunes' : 'deezer') as 'itunes' | 'deezer',
+    };
+    previewCache.set(cacheKey, payload);
+    res.json(payload);
   });
 
   app.get('/api/local-music', (_req, res) => {
@@ -838,7 +733,8 @@ async function createServer() {
         });
       } catch (err) {
         res.status(500).json({
-          error: err instanceof Error ? err.message : 'Erreur sauvegarde locale',
+          error:
+            err instanceof Error ? err.message : 'Erreur sauvegarde locale',
         });
       }
     }
@@ -847,55 +743,45 @@ async function createServer() {
   app.get('/api/local-music/stream/:filename', (req, res) => {
     const safeName = path.basename(req.params.filename);
     const fullPath = path.join(MUSIC_DIR, safeName);
-    if (!fs.existsSync(fullPath)) {
-      res.status(404).send('Fichier introuvable');
-      return;
-    }
-
-    const stat = fs.statSync(fullPath);
     const ext = path.extname(safeName).toLowerCase();
     const contentType = MIME_MAP[ext] || 'application/octet-stream';
-    const range = req.headers.range;
+    streamStaticFileWithRange(req, res, fullPath, contentType);
+  });
 
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = Number.parseInt(parts[0], 10);
-      const end = parts[1] ? Number.parseInt(parts[1], 10) : stat.size - 1;
-      const chunkSize = end - start + 1;
-      res.writeHead(206, {
-        'Content-Range': `bytes ${start}-${end}/${stat.size}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': chunkSize,
-        'Content-Type': contentType,
-      });
-      fs.createReadStream(fullPath, { start, end }).pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Length': stat.size,
-        'Content-Type': contentType,
-        'Accept-Ranges': 'bytes',
-      });
-      fs.createReadStream(fullPath).pipe(res);
-    }
+  // Ensure unmatched /api/* routes always return JSON 404 instead of SPA HTML
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Endpoint API introuvable' });
   });
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(ROOT_DIR, 'dist');
-    app.use(express.static(distDir));
+    app.use(
+      express.static(distDir, {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('index.html')) {
+            res.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      })
+    );
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SpotLocal server running on http://localhost:${PORT}`);
+  app.listen(PORT, BIND_HOST, () => {
+    console.log(`SpotLocal server running on http://${BIND_HOST}:${PORT}`);
   });
 }
 
