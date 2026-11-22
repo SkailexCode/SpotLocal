@@ -1,42 +1,27 @@
-export type RepeatMode = 'off' | 'all' | 'one';
-
-export type SortKey = 'default' | 'title' | 'artist' | 'album' | 'duration';
-
-export type ActiveView =
-  | 'home'
-  | 'liked'
-  | 'search'
-  | 'playlist'
-  | 'all-tracks'
-  | 'artist';
-
-export type AudioSourceKind =
-  | 'local-idb'
-  | 'local-folder'
-  | 'youtube'
-  | 'none';
-
-export type SleepTimerOption = 0 | 15 | 30 | 45 | 60 | 'end-of-track';
+export type AudioSourceKind = 'local-idb' | 'local-folder' | 'youtube' | 'none';
 
 export interface Track {
   id: string;
   title: string;
   artist: string;
   album: string;
+  genre?: string;
+  moodMask?: number;
   addedAt: string;
-  durationLabel: string;
   durationSec: number;
-  liked: boolean;
-  explicit?: boolean;
-  hasClip?: boolean;
+  durationLabel: string;
   coverUrl: string;
   previewUrl: string;
+  explicit?: boolean;
+  liked: boolean;
+  /**Local browser IndexedDB file key (persists across page reloads) */
+  localFileKey?: string;
+  /**Local disk /music server URL when running locally */
+  localServerUrl?: string;
+  /**Verified YouTube video IDs (primary + optional backup failover) */
   youtubeVideoIds?: string[];
   searchQuery?: string;
-  localFileKey?: string;
-  localServerUrl?: string;
   sourceKind?: AudioSourceKind;
-  genre?: string;
 }
 
 export interface Playlist {
@@ -45,34 +30,40 @@ export interface Playlist {
   description: string;
   coverUrl?: string;
   trackIds: string[];
-  createdAt: string;
+  createdAt?: string;
 }
+
+export type ActiveView =
+  | 'home'
+  | 'explore'
+  | 'moods'
+  | 'search'
+  | 'liked'
+  | 'all-tracks'
+  | 'artist'
+  | 'playlist';
+
+export type RepeatMode = 'off' | 'all' | 'one';
+
+export type SortKey = 'default' | 'title' | 'artist' | 'album' | 'duration';
+
+export type SleepTimerOption = 0 | 15 | 30 | 45 | 60 | 'end-of-track';
 
 export interface ResolvedYouTubeMeta {
   videoId: string;
   title: string;
   artist: string;
-  rawTitle: string;
-  authorName: string;
   coverUrl: string;
+  rawTitle?: string;
+  authorName?: string;
 }
 
 export interface SpotLocalBackupData {
-  version: 2;
+  version: 3;
   exportedAt: string;
   customTracks: Track[];
+  likedIds?: string[];
   trackOverrides: Record<string, Partial<Track>>;
   playlists: Playlist[];
   recentTrackIds: string[];
-}
-
-declare global {
-  interface Window {
-    spotlocalDesktop?: {
-      isDesktop?: boolean;
-      getMusicDir?: () => Promise<string>;
-      openMusicDir?: () => Promise<string>;
-      pickAudioFiles?: () => Promise<string[]>;
-    };
-  }
 }
