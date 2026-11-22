@@ -14,12 +14,7 @@ export type AudioSourceKind =
   | 'local-idb'
   | 'local-folder'
   | 'youtube'
-  | 'deezer'
-  | 'itunes'
-  | 'stream'
   | 'none';
-
-export type CatalogProviderFilter = 'all' | 'deezer' | 'itunes' | 'local';
 
 export type SleepTimerOption = 0 | 15 | 30 | 45 | 60 | 'end-of-track';
 
@@ -36,15 +31,8 @@ export interface Track {
   hasClip?: boolean;
   coverUrl: string;
   previewUrl: string;
-  fallbackPreviewUrl?: string;
-  deezerId?: number;
-  itunesId?: number;
-  releaseYear?: string;
-  dailymotionId?: string;
-  soundcloudTrackId?: number;
   youtubeVideoIds?: string[];
   searchQuery?: string;
-  matchedName?: string;
   localFileKey?: string;
   localServerUrl?: string;
   sourceKind?: AudioSourceKind;
@@ -58,27 +46,6 @@ export interface Playlist {
   coverUrl?: string;
   trackIds: string[];
   createdAt: string;
-  isSystem?: boolean;
-}
-
-export interface SearchResultTrack {
-  externalId: string;
-  title: string;
-  artist: string;
-  album: string;
-  durationSec: number;
-  durationLabel: string;
-  explicit: boolean;
-  coverUrl: string;
-  previewUrl: string;
-  fallbackPreviewUrl?: string;
-  deezerId?: number;
-  itunesId?: number;
-  genre?: string;
-  releaseYear?: string;
-  youtubeVideoId?: string;
-  source: 'deezer' | 'itunes' | 'youtube';
-  providerSources?: Array<'deezer' | 'itunes'>;
 }
 
 export interface ResolvedYouTubeMeta {

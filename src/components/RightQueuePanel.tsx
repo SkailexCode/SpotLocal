@@ -2,7 +2,6 @@ import { memo } from 'react';
 import {
   HardDrive,
   Link2,
-  Music2,
   Pause,
   Play,
   Tv,
@@ -75,24 +74,6 @@ export const RightQueuePanel = memo(function RightQueuePanel({
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-400">
                   <Youtube className="w-3 h-3 fill-current" />
                   YouTube Intégral
-                </span>
-              )}
-              {activeAudioSource === 'deezer' && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-300">
-                  <Music2 className="w-3 h-3" />
-                  Deezer 30s
-                </span>
-              )}
-              {activeAudioSource === 'itunes' && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-300">
-                  <Music2 className="w-3 h-3" />
-                  Apple 30s
-                </span>
-              )}
-              {activeAudioSource === 'stream' && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400">
-                  <Music2 className="w-3 h-3" />
-                  Extrait 30s
                 </span>
               )}
             </div>

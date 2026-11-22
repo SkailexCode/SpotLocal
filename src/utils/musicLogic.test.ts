@@ -8,16 +8,15 @@ import {
   getNextTrackIndex,
   getPreviousTrackIndex,
   getTrackYouTubeWatchUrl,
-  isExpiredDeezerPreviewUrl,
-  isTransientSignedStreamUrl,
   matchLocalFilenameToTrack,
-  mergeAndScoreCatalogResults,
   parseAudioFilename,
   parseYouTubeTitleAndChannel,
+  searchRankedTracks,
   sortTracks,
   totalDurationLabel,
 } from './musicLogic';
-import type { SearchResultTrack, Track } from '../types/music';
+import { DEFAULT_PLAYLISTS, SEED_TRACKS } from '../data/initialLibrary';
+import type { Track } from '../types/music';
 
 const sampleTracks: Track[] = [
   {
@@ -25,39 +24,42 @@ const sampleTracks: Track[] = [
     title: 'The Sound of Silence - Electric Version',
     artist: 'Simon & Garfunkel',
     album: 'Sounds Of Silence',
-    addedAt: 'il y a 6 jours',
+    addedAt: 'Catalogue YouTube',
     durationLabel: '3:10',
     durationSec: 190,
-    liked: true,
-    coverUrl: '/covers/track-1.jpg',
+    liked: false,
+    coverUrl: 'https://i.ytimg.com/vi/4zLfCnGVeL4/hqdefault.jpg',
     previewUrl: '',
-    genre: 'Rock',
+    youtubeVideoIds: ['4zLfCnGVeL4'],
+    genre: 'Rock & Légendes',
   },
   {
     id: '2',
-    title: 'Été avec toi',
-    artist: 'Adèle Castillon',
-    album: 'Été avec toi',
-    addedAt: 'il y a 3 semaines',
-    durationLabel: '3:07',
-    durationSec: 187,
-    liked: true,
-    coverUrl: '/covers/track-11.jpg',
+    title: 'La Quête',
+    artist: 'Orelsan',
+    album: 'Civilisation',
+    addedAt: 'Catalogue YouTube',
+    durationLabel: '4:04',
+    durationSec: 244,
+    liked: false,
+    coverUrl: 'https://i.ytimg.com/vi/Aq1c1tG7hRU/hqdefault.jpg',
     previewUrl: '',
-    genre: 'Scène Française',
+    youtubeVideoIds: ['Aq1c1tG7hRU'],
+    genre: 'Rap FR',
   },
   {
     id: '3',
     title: 'Dream Is Collapsing',
     artist: 'Hans Zimmer',
     album: 'Inception',
-    addedAt: '29 août 2026',
+    addedAt: 'Catalogue YouTube',
     durationLabel: '2:24',
     durationSec: 144,
-    liked: true,
-    coverUrl: '/covers/track-26.jpg',
+    liked: false,
+    coverUrl: 'https://i.ytimg.com/vi/imkpO12cR3s/hqdefault.jpg',
     previewUrl: '',
-    genre: 'Cinéma',
+    youtubeVideoIds: ['imkpO12cR3s'],
+    genre: 'Cinéma & Instrumental',
   },
 ];
 
@@ -68,24 +70,29 @@ test('formatTime formats seconds cleanly', () => {
   assert.equal(formatTime(-4), '0:00');
 });
 
-test('filterTracks matches title, artist, genre, and accented text', () => {
-  assert.equal(filterTracks(sampleTracks, 'ete avec').length, 1);
+test('filterTracks matches multi-word, title, artist, genre, and accented text', () => {
+  assert.equal(filterTracks(sampleTracks, 'orelsan quete').length, 1);
   assert.equal(filterTracks(sampleTracks, 'zimmer')[0]?.id, '3');
   assert.equal(filterTracks(sampleTracks, 'cinema')[0]?.id, '3');
   assert.equal(filterTracks(sampleTracks, '').length, 3);
+});
+
+test('searchRankedTracks ranks exact artist/title match first', () => {
+  const ranked = searchRankedTracks(sampleTracks, 'Orelsan La Quête');
+  assert.equal(ranked[0]?.id, '2');
 });
 
 test('sortTracks sorts by duration without mutating original array', () => {
   const sorted = sortTracks(sampleTracks, 'duration', 'asc');
   assert.deepEqual(
     sorted.map((t) => t.id),
-    ['3', '2', '1']
+    ['3', '1', '2']
   );
   assert.equal(sampleTracks[0].id, '1');
 });
 
 test('totalDurationLabel sums track durations accurately', () => {
-  assert.equal(totalDurationLabel(sampleTracks), '8 min 41 s');
+  assert.equal(totalDurationLabel(sampleTracks), '9 min 38 s');
 });
 
 test('getNextTrackIndex handles repeat modes and shuffle', () => {
@@ -115,9 +122,15 @@ test('parseAudioFilename splits artist and title', () => {
 });
 
 test('matchLocalFilenameToTrack matches filenames to catalog tracks', () => {
-  const m1 = matchLocalFilenameToTrack('Hans Zimmer - Dream Is Collapsing.mp3', sampleTracks);
+  const m1 = matchLocalFilenameToTrack(
+    'Hans Zimmer - Dream Is Collapsing.mp3',
+    sampleTracks
+  );
   assert.equal(m1?.id, '3');
-  const m2 = matchLocalFilenameToTrack('Adele Castillon - Ete avec toi.flac', sampleTracks);
+  const m2 = matchLocalFilenameToTrack(
+    'Orelsan - La Quete.flac',
+    sampleTracks
+  );
   assert.equal(m2?.id, '2');
   const m3 = matchLocalFilenameToTrack('Unknown_Track_XYZ.mp3', sampleTracks);
   assert.equal(m3, null);
@@ -131,7 +144,7 @@ test('YouTube URL helpers format official watch and search links', () => {
   const trackWithoutYt: Track = {
     ...sampleTracks[1]!,
     youtubeVideoIds: [],
-    searchQuery: 'Adele Castillon Ete avec toi',
+    searchQuery: 'Orelsan La Quete',
   };
 
   assert.equal(
@@ -144,7 +157,7 @@ test('YouTube URL helpers format official watch and search links', () => {
   );
   assert.equal(
     getTrackYouTubeWatchUrl(trackWithoutYt),
-    'https://www.youtube.com/results?search_query=Adele%20Castillon%20Ete%20avec%20toi'
+    'https://www.youtube.com/results?search_query=Orelsan%20La%20Quete'
   );
 });
 
@@ -153,25 +166,28 @@ test('extractYouTubeVideoId parses share links, watch URLs, YT Music, Shorts, an
     extractYouTubeVideoId('https://youtu.be/4NRXx6U8ABQ?si=9xYzAbCdEf'),
     '4NRXx6U8ABQ'
   );
+  assert.equal(extractYouTubeVideoId('youtu.be/oiKj0Z_Xnjc'), 'oiKj0Z_Xnjc');
   assert.equal(
-    extractYouTubeVideoId('youtu.be/oiKj0Z_Xnjc'),
-    'oiKj0Z_Xnjc'
-  );
-  assert.equal(
-    extractYouTubeVideoId('https://www.youtube.com/watch?v=fJ9rUzIMcZQ&list=RDfJ9rUzIMcZQ'),
+    extractYouTubeVideoId(
+      'https://www.youtube.com/watch?v=fJ9rUzIMcZQ&list=RDfJ9rUzIMcZQ'
+    ),
     'fJ9rUzIMcZQ'
   );
   assert.equal(
-    extractYouTubeVideoId('https://music.youtube.com/watch?v=5NV6Rdv1a3I&feature=share'),
+    extractYouTubeVideoId(
+      'https://music.youtube.com/watch?v=5NV6Rdv1a3I&feature=share'
+    ),
     '5NV6Rdv1a3I'
   );
   assert.equal(
     extractYouTubeVideoId('https://www.youtube.com/shorts/V9PVRfjEBTI'),
     'V9PVRfjEBTI'
   );
-  // Plain 11-char word in search bar should NOT be mistaken for YT ID unless allowRawId is true
   assert.equal(extractYouTubeVideoId('Californica'), null);
-  assert.equal(extractYouTubeVideoId('4NRXx6U8ABQ', { allowRawId: true }), '4NRXx6U8ABQ');
+  assert.equal(
+    extractYouTubeVideoId('4NRXx6U8ABQ', { allowRawId: true }),
+    '4NRXx6U8ABQ'
+  );
   assert.equal(extractYouTubeVideoId('yt:4NRXx6U8ABQ'), '4NRXx6U8ABQ');
 });
 
@@ -204,79 +220,12 @@ test('parseYouTubeTitleAndChannel cleans official tags and splits Artist - Title
   );
 });
 
-test('isTransientSignedStreamUrl and isExpiredDeezerPreviewUrl detect expiring dzcdn tokens', () => {
-  const nowMs = 1_800_000_000_000; // exp = 1800000000
-  const expiredDzUrl =
-    'https://cdnt-preview.dzcdn.net/stream/c-abc123.mp3?hdnea=exp=1799999000~acl=/stream/*~hmac=xyz';
-  const validDzUrl =
-    'https://cdnt-preview.dzcdn.net/stream/c-abc123.mp3?hdnea=exp=1800003600~acl=/stream/*~hmac=xyz';
-  const appleUrl =
-    'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/track.m4a';
-
-  assert.equal(isTransientSignedStreamUrl(expiredDzUrl), true);
-  assert.equal(isTransientSignedStreamUrl(appleUrl), false);
-
-  assert.equal(isExpiredDeezerPreviewUrl(expiredDzUrl, nowMs), true);
-  assert.equal(isExpiredDeezerPreviewUrl(validDzUrl, nowMs), false);
-  assert.equal(isExpiredDeezerPreviewUrl(appleUrl, nowMs), false);
+test('Initial catalog has 5000+ YouTube tracks, 0 pre-saved playlists, and 0 pre-liked tracks', () => {
+  assert.equal(DEFAULT_PLAYLISTS.length, 0);
+  assert.ok(SEED_TRACKS.length >= 5000);
+  assert.equal(SEED_TRACKS.filter((t) => t.liked).length, 0);
+  for (const t of SEED_TRACKS) {
+    assert.ok(t.youtubeVideoIds && t.youtubeVideoIds.length >= 1);
+    assert.match(t.youtubeVideoIds[0]!, /^[A-Za-z0-9_-]{11}$/);
+  }
 });
-
-test('mergeAndScoreCatalogResults fuses Apple + Deezer duplicates and demotes karaoke covers', () => {
-  const rawItems: SearchResultTrack[] = [
-    {
-      externalId: 'dz-999',
-      deezerId: 999,
-      title: 'Papaoutai (Karaoke Version)',
-      artist: 'Karaoke Stars',
-      album: 'Hits Karaoke',
-      durationSec: 230,
-      durationLabel: '3:50',
-      explicit: false,
-      coverUrl: 'https://e-cdns-images.dzcdn.net/images/cover/250x250.jpg',
-      previewUrl: 'https://cdnt-preview.dzcdn.net/stream/karaoke.mp3?hdnea=exp=1999999999',
-      source: 'deezer',
-    },
-    {
-      externalId: 'dz-101',
-      deezerId: 101,
-      title: 'Papaoutai',
-      artist: 'Stromae',
-      album: 'Racine carrée',
-      durationSec: 232,
-      durationLabel: '3:52',
-      explicit: false,
-      coverUrl: 'https://e-cdns-images.dzcdn.net/images/cover/500x500.jpg',
-      previewUrl: 'https://cdnt-preview.dzcdn.net/stream/papaoutai.mp3?hdnea=exp=1999999999',
-      source: 'deezer',
-    },
-    {
-      externalId: 'it-202',
-      itunesId: 202,
-      title: 'Papaoutai',
-      artist: 'Stromae',
-      album: 'Racine carrée',
-      durationSec: 232,
-      durationLabel: '3:52',
-      explicit: false,
-      coverUrl: 'https://is1-ssl.mzstatic.com/image/thumb/Music/600x600bb.jpg',
-      previewUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/papaoutai.m4a',
-      genre: 'Pop',
-      releaseYear: '2013',
-      source: 'itunes',
-    },
-  ];
-
-  const merged = mergeAndScoreCatalogResults(rawItems, 'Stromae Papaoutai');
-  assert.equal(merged.length, 2);
-  // Official merged track must rank #1 ahead of karaoke
-  const top = merged[0]!;
-  assert.equal(top.artist, 'Stromae');
-  assert.deepEqual(top.providerSources?.sort(), ['deezer', 'itunes']);
-  assert.equal(top.deezerId, 101);
-  assert.equal(top.itunesId, 202);
-  assert.equal(top.genre, 'Pop');
-  // Stable Apple URL promoted to primary, Deezer URL kept as fallback
-  assert.match(top.previewUrl, /itunes\.apple\.com/);
-  assert.match(top.fallbackPreviewUrl || '', /dzcdn\.net/);
-});
-

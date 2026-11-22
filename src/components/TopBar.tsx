@@ -65,10 +65,14 @@ export const TopBar = memo(function TopBar({
           <div className="w-9 h-9 rounded-full bg-[#1ED760] flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">
             <svg
               viewBox="0 0 24 24"
-              className="w-5 h-5 text-black fill-current"
+              className="w-5 h-5 text-black"
               aria-hidden="true"
+              fill="none"
             >
-              <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.586 14.424c-.18.295-.563.387-.857.207-2.35-1.434-5.305-1.76-8.786-.963-.335.077-.67-.133-.746-.469-.077-.336.132-.67.469-.746 3.809-.871 7.077-.496 9.713 1.115.293.18.386.563.207.856zm1.224-2.724c-.226.367-.706.482-1.072.257-2.687-1.652-6.785-2.131-9.965-1.166-.413.127-.848-.106-.973-.517-.125-.413.108-.848.52-.973 3.632-1.102 8.147-.568 11.234 1.328.366.226.48.707.256 1.071zm.105-2.835C14.692 8.95 9.375 8.775 6.297 9.71c-.493.15-1.016-.128-1.166-.62-.149-.493.129-1.016.621-1.166 3.532-1.073 9.404-.865 13.115 1.338.445.264.59.838.327 1.282-.264.443-.838.59-1.28.321z" />
+              <circle cx="12" cy="12" r="9.5" stroke="currentColor" strokeWidth="2.2" />
+              <rect x="7.5" y="9.5" width="2" height="5" rx="1" fill="currentColor" />
+              <rect x="11" y="6.5" width="2" height="11" rx="1" fill="currentColor" />
+              <rect x="14.5" y="8.5" width="2" height="7" rx="1" fill="currentColor" />
             </svg>
           </div>
           <div className="hidden sm:flex flex-col items-start leading-none">

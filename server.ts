@@ -53,48 +53,12 @@ class TtlCache<T> {
   }
 }
 
-interface CatalogSearchResult {
-  externalId: string;
-  deezerId?: number;
-  itunesId?: number;
-  title: string;
-  artist: string;
-  album: string;
-  durationSec: number;
-  durationLabel: string;
-  explicit: boolean;
-  coverUrl: string;
-  previewUrl: string;
-  fallbackPreviewUrl?: string;
-  genre?: string;
-  releaseYear?: string;
-  source: 'deezer' | 'itunes';
-  providerSources?: Array<'deezer' | 'itunes'>;
-}
-
-interface SearchApiPayload {
-  results: CatalogSearchResult[];
-  deezer: CatalogSearchResult[];
-  itunes: CatalogSearchResult[];
-}
-
-// Keep TTL to 10 minutes so Deezer's signed hdnea= preview tokens remain fresh
-const searchApiCache = new TtlCache<SearchApiPayload>(10 * 60 * 1000, 250);
-const chartsApiCache = new TtlCache<CatalogSearchResult[]>(15 * 60 * 1000, 4);
 const youtubeIdsCache = new TtlCache<string[]>(60 * 60 * 1000, 300);
 const youtubeMetaCache = new TtlCache<{
   title: string;
   author_name: string;
   thumbnail_url: string;
 }>(60 * 60 * 1000, 300);
-const previewCache = new TtlCache<{
-  previewUrl: string;
-  fallbackPreviewUrl?: string;
-  coverUrl: string;
-  deezerId?: number;
-  itunesId?: number;
-  provider: 'itunes' | 'deezer';
-}>(10 * 60 * 1000, 300);
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -117,69 +81,6 @@ const MIME_MAP: Record<string, string> = {
   '.opus': 'audio/opus',
   '.webm': 'audio/webm',
 };
-
-function formatSec(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const total = Math.floor(seconds);
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
-
-function normKey(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function mergeServerCatalog(
-  itunesList: CatalogSearchResult[],
-  deezerList: CatalogSearchResult[]
-): CatalogSearchResult[] {
-  const bySig = new Map<string, CatalogSearchResult>();
-  for (const item of [...itunesList, ...deezerList]) {
-    const cleanTitle = normKey(
-      item.title.replace(
-        /\s*[\(\[](?:feat\.?|ft\.?|with|remaster(?:ed)?|radio edit)[^\)\]]*[\)\]]/gi,
-        ''
-      )
-    );
-    const primaryArtist = normKey(item.artist.split(/[,&]/)[0] || item.artist);
-    const sig = `${cleanTitle}::${primaryArtist}`;
-    const existing = bySig.get(sig);
-    if (!existing) {
-      bySig.set(sig, { ...item, providerSources: [item.source] });
-      continue;
-    }
-
-    const providers = Array.from(
-      new Set([...(existing.providerSources || []), item.source])
-    );
-    bySig.set(sig, {
-      ...existing,
-      deezerId: existing.deezerId ?? item.deezerId,
-      itunesId: existing.itunesId ?? item.itunesId,
-      genre: existing.genre || item.genre,
-      releaseYear: existing.releaseYear || item.releaseYear,
-      coverUrl:
-        existing.coverUrl.includes('600x600') || !item.coverUrl
-          ? existing.coverUrl
-          : item.coverUrl,
-      previewUrl: existing.previewUrl || item.previewUrl,
-      fallbackPreviewUrl:
-        existing.fallbackPreviewUrl ||
-        (item.previewUrl && item.previewUrl !== existing.previewUrl
-          ? item.previewUrl
-          : undefined),
-      providerSources: providers,
-    });
-  }
-  return Array.from(bySig.values());
-}
 
 function scanLocalMusicDir(): Array<{
   filename: string;
@@ -212,138 +113,6 @@ function scanLocalMusicDir(): Array<{
     });
   }
   return results;
-}
-
-async function searchDeezer(
-  query: string,
-  limit = 20
-): Promise<CatalogSearchResult[]> {
-  const res = await fetch(
-    `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=${limit}`,
-    { signal: AbortSignal.timeout(4500) }
-  );
-  if (!res.ok) throw new Error(`Deezer HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    data?: Array<{
-      id: number;
-      title: string;
-      duration: number;
-      explicit_lyrics?: boolean;
-      preview?: string;
-      release_date?: string;
-      artist?: { name?: string };
-      album?: {
-        title?: string;
-        cover_medium?: string;
-        cover_big?: string;
-        cover_xl?: string;
-      };
-    }>;
-  };
-  return (data.data || [])
-    .filter((item) => item.title && item.artist?.name)
-    .map((item) => ({
-      externalId: `dz-${item.id}`,
-      deezerId: item.id,
-      title: item.title,
-      artist: item.artist?.name || 'Artiste inconnu',
-      album: item.album?.title || item.title,
-      durationSec: item.duration || 180,
-      durationLabel: formatSec(item.duration || 180),
-      explicit: Boolean(item.explicit_lyrics),
-      coverUrl:
-        item.album?.cover_big ||
-        item.album?.cover_xl ||
-        item.album?.cover_medium ||
-        '',
-      previewUrl: item.preview || '',
-      releaseYear: item.release_date?.slice(0, 4),
-      source: 'deezer' as const,
-      providerSources: ['deezer'],
-    }));
-}
-
-async function fetchDeezerChart(limit = 15): Promise<CatalogSearchResult[]> {
-  const res = await fetch(
-    `https://api.deezer.com/chart/0/tracks?limit=${limit}`,
-    { signal: AbortSignal.timeout(4500) }
-  );
-  if (!res.ok) throw new Error(`Deezer Chart HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    data?: Array<{
-      id: number;
-      title: string;
-      duration: number;
-      explicit_lyrics?: boolean;
-      preview?: string;
-      artist?: { name?: string };
-      album?: { title?: string; cover_medium?: string; cover_big?: string };
-    }>;
-  };
-  return (data.data || [])
-    .filter((item) => item.title && item.artist?.name)
-    .map((item) => ({
-      externalId: `dz-${item.id}`,
-      deezerId: item.id,
-      title: item.title,
-      artist: item.artist?.name || 'Artiste inconnu',
-      album: item.album?.title || item.title,
-      durationSec: item.duration || 180,
-      durationLabel: formatSec(item.duration || 180),
-      explicit: Boolean(item.explicit_lyrics),
-      coverUrl: item.album?.cover_big || item.album?.cover_medium || '',
-      previewUrl: item.preview || '',
-      source: 'deezer' as const,
-      providerSources: ['deezer'],
-    }));
-}
-
-async function searchItunes(
-  query: string,
-  limit = 20
-): Promise<CatalogSearchResult[]> {
-  const res = await fetch(
-    `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&country=FR&limit=${limit}`,
-    { signal: AbortSignal.timeout(4500) }
-  );
-  if (!res.ok) throw new Error(`iTunes HTTP ${res.status}`);
-  const data = (await res.json()) as {
-    results?: Array<{
-      trackId: number;
-      trackName?: string;
-      artistName?: string;
-      collectionName?: string;
-      trackTimeMillis?: number;
-      trackExplicitness?: string;
-      artworkUrl100?: string;
-      previewUrl?: string;
-      primaryGenreName?: string;
-      releaseDate?: string;
-    }>;
-  };
-  return (data.results || [])
-    .filter((item) => item.trackName && item.artistName)
-    .map((item) => {
-      const sec = Math.round((item.trackTimeMillis || 180000) / 1000);
-      return {
-        externalId: `it-${item.trackId}`,
-        itunesId: item.trackId,
-        title: item.trackName || '',
-        artist: item.artistName || '',
-        album: item.collectionName || item.trackName || '',
-        durationSec: sec,
-        durationLabel: formatSec(sec),
-        explicit: item.trackExplicitness === 'explicit',
-        coverUrl: item.artworkUrl100
-          ? item.artworkUrl100.replace('100x100bb', '600x600bb')
-          : '',
-        previewUrl: item.previewUrl || '',
-        genre: item.primaryGenreName,
-        releaseYear: item.releaseDate?.slice(0, 4),
-        source: 'itunes' as const,
-        providerSources: ['itunes'],
-      };
-    });
 }
 
 async function findYoutubeVideoIds(query: string): Promise<string[]> {
@@ -392,14 +161,12 @@ async function createServer() {
   const app = express();
   app.disable('x-powered-by');
 
-  // Lightweight zero-dependency Gzip compression for JSON API payloads > 1 KB
   app.use('/api', (req, res, next) => {
     const acceptEnc = String(req.headers['accept-encoding'] || '');
     if (!acceptEnc.includes('gzip')) {
       next();
       return;
     }
-    const origJson = res.json.bind(res);
     res.json = ((body: unknown) => {
       const serialized = JSON.stringify(body);
       if (serialized.length < 1024) {
@@ -421,7 +188,7 @@ async function createServer() {
     res.json({
       ok: true,
       mode: process.env.SPOTLOCAL_DESKTOP === '1' ? 'desktop' : 'web',
-      apis: ['apple-itunes', 'deezer', 'youtube-oembed'],
+      apis: ['youtube-iframe', 'youtube-oembed', 'local-mp3'],
       musicDir: MUSIC_DIR,
       localCount: localFiles.length,
     });
@@ -589,114 +356,6 @@ async function createServer() {
     }
   });
 
-  // Parallel Apple iTunes + Deezer Search
-  app.get('/api/music/search', async (req, res) => {
-    const q = String(req.query.q || '').trim();
-    if (!q) {
-      res.json({ results: [], deezer: [], itunes: [] });
-      return;
-    }
-    const cacheKey = normKey(q);
-    const cached = searchApiCache.get(cacheKey);
-    if (cached) {
-      res.json({ ...cached, cached: true });
-      return;
-    }
-
-    const [dzSettled, itSettled] = await Promise.allSettled([
-      searchDeezer(q, 20),
-      searchItunes(q, 20),
-    ]);
-
-    const deezer = dzSettled.status === 'fulfilled' ? dzSettled.value : [];
-    const itunes = itSettled.status === 'fulfilled' ? itSettled.value : [];
-
-    if (deezer.length === 0 && itunes.length === 0) {
-      res.status(502).json({
-        results: [],
-        deezer: [],
-        itunes: [],
-        error: 'Catalogues Apple et Deezer momentanément indisponibles',
-      });
-      return;
-    }
-
-    const results = mergeServerCatalog(itunes, deezer);
-    const payload: SearchApiPayload = { results, deezer, itunes };
-    searchApiCache.set(cacheKey, payload);
-    res.json(payload);
-  });
-
-  // Parallel Apple iTunes + Deezer Live Charts
-  app.get('/api/music/charts', async (_req, res) => {
-    const cached = chartsApiCache.get('top-fr');
-    if (cached) {
-      res.json({ results: cached, cached: true });
-      return;
-    }
-
-    const [dzChart, itTop] = await Promise.allSettled([
-      fetchDeezerChart(15),
-      searchItunes('Stromae Angèle The Weeknd Dua Lipa Billie Eilish', 15),
-    ]);
-
-    const dzList = dzChart.status === 'fulfilled' ? dzChart.value : [];
-    const itList = itTop.status === 'fulfilled' ? itTop.value : [];
-    const merged = mergeServerCatalog(itList, dzList).slice(0, 18);
-
-    if (merged.length > 0) {
-      chartsApiCache.set('top-fr', merged);
-    }
-    res.json({ results: merged });
-  });
-
-  // Parallel Apple iTunes + Deezer Preview Stream Resolver
-  app.get('/api/music/resolve', async (req, res) => {
-    const q = String(req.query.q || '').trim();
-    if (!q) {
-      res.status(400).json({ error: 'Paramètre q manquant' });
-      return;
-    }
-    const cacheKey = normKey(q);
-    const cached = previewCache.get(cacheKey);
-    if (cached) {
-      res.json(cached);
-      return;
-    }
-
-    const [itSettled, dzSettled] = await Promise.allSettled([
-      searchItunes(q, 6),
-      searchDeezer(q, 6),
-    ]);
-
-    const itHit =
-      itSettled.status === 'fulfilled'
-        ? itSettled.value.find((x) => x.previewUrl)
-        : undefined;
-    const dzHit =
-      dzSettled.status === 'fulfilled'
-        ? dzSettled.value.find((x) => x.previewUrl)
-        : undefined;
-
-    if (!itHit && !dzHit) {
-      res.status(502).json({ previewUrl: '', coverUrl: '' });
-      return;
-    }
-
-    const primary = itHit || dzHit!;
-    const secondary = itHit && dzHit ? dzHit : undefined;
-    const payload = {
-      previewUrl: primary.previewUrl,
-      fallbackPreviewUrl: secondary?.previewUrl,
-      coverUrl: primary.coverUrl || secondary?.coverUrl || '',
-      deezerId: dzHit?.deezerId,
-      itunesId: itHit?.itunesId,
-      provider: (itHit ? 'itunes' : 'deezer') as 'itunes' | 'deezer',
-    };
-    previewCache.set(cacheKey, payload);
-    res.json(payload);
-  });
-
   app.get('/api/local-music', (_req, res) => {
     res.json({
       musicDir: MUSIC_DIR,
@@ -748,7 +407,6 @@ async function createServer() {
     streamStaticFileWithRange(req, res, fullPath, contentType);
   });
 
-  // Ensure unmatched /api/* routes always return JSON 404 instead of SPA HTML
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Endpoint API introuvable' });
   });

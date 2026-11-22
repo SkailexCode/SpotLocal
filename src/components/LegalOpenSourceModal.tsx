@@ -30,7 +30,7 @@ export function LegalOpenSourceModal({
           <div className="flex items-center gap-2.5">
             <Scale className="w-5 h-5 text-[#1ED760]" />
             <h2 id="legal-modal-title" className="font-display font-bold text-lg">
-              Mentions Légales, Conformité API &amp; Licence MIT
+              Mentions Légales, Conformité YouTube &amp; Licence MIT
             </h2>
           </div>
           <button
@@ -52,14 +52,14 @@ export function LegalOpenSourceModal({
             <p>
               Le code source de <strong className="text-white">SpotLocal</strong> est distribué gratuitement à but éducatif et non commercial sous{' '}
               <strong className="text-white">Licence MIT</strong> (voir le fichier <code className="text-white">LICENSE</code>).
-              SpotLocal est un lecteur web indépendant, <strong className="text-white">non affilié, ni sponsorisé, ni approuvé</strong> par Spotify AB, Apple Inc., Deezer SA ou Google LLC / YouTube. Toutes les marques citées appartiennent à leurs propriétaires respectifs.
+              SpotLocal est un lecteur web indépendant, <strong className="text-white">non affilié, ni sponsorisé, ni approuvé</strong> par Spotify AB ou Google LLC / YouTube. Toutes les marques citées appartiennent à leurs propriétaires respectifs.
             </p>
           </div>
 
           <div className="p-4 rounded-lg bg-[#141414] border border-white/[0.08] space-y-2">
             <h3 className="font-semibold text-sm text-white flex items-center gap-2">
               <FileAudio className="w-4 h-4 text-[#1ED760]" />
-              2. Droit d&apos;Auteur &amp; Conformité aux Conditions d&apos;Utilisation des API
+              2. Lecture Intégrale 100 % Légale (YouTube IFrame &amp; MP3 Local)
             </h3>
             <ul className="space-y-1.5 pt-1">
               <li className="flex items-start gap-2">
@@ -71,13 +71,7 @@ export function LegalOpenSourceModal({
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#1ED760] shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-white">Lecteur officiel YouTube IFrame Player API :</strong> les vidéos YouTube sont lues exclusivement via le lecteur intégré officiel de YouTube dans une fenêtre vidéo visible (&ge; 200 px), sans téléchargement, sans extraction de flux et dans le respect des restrictions d&apos;intégration décidées par les ayants droit.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-[#1ED760] shrink-0 mt-0.5" />
-                <span>
-                  <strong className="text-white">Extraits promotionnels Apple iTunes &amp; Deezer (30 s) :</strong> les aperçus audio de découverte et métadonnées proviennent directement des API publiques officielles d&apos;Apple (<code className="text-white">itunes.apple.com</code>) et de Deezer (<code className="text-white">api.deezer.com</code>).
+                  <strong className="text-white">Lecteur officiel YouTube IFrame Player API :</strong> tous les clips et titres du catalogue sont lus en intégralité via le lecteur intégré officiel de YouTube dans une fenêtre vidéo visible (&ge; 200 px), sans téléchargement, sans extraction de flux et dans le respect des droits d&apos;intégration des ayants droit.
                 </span>
               </li>
               <li className="flex items-start gap-2">
@@ -95,7 +89,7 @@ export function LegalOpenSourceModal({
               3. Vie Privée (RGPD) &amp; Hébergement
             </h3>
             <p>
-              Aucune création de compte, aucune collecte de données personnelles, aucun traceur publicitaire : vos playlists et préférences restent stockées localement dans votre navigateur (<code className="text-white">localStorage</code> / <code className="text-white">IndexedDB</code>). Démo statique hébergée via <strong className="text-white">GitHub Pages</strong> (GitHub, Inc., 88 Colin P Kelly Jr St, San Francisco, CA 94107, USA).
+              Aucune création de compte, aucune collecte de données personnelles, aucun traceur publicitaire : vos playlists, favoris et préférences restent stockés localement dans votre navigateur (<code className="text-white">localStorage</code> / <code className="text-white">IndexedDB</code>). Démo statique hébergée via <strong className="text-white">GitHub Pages</strong>.
             </p>
           </div>
         </div>

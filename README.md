@@ -1,23 +1,24 @@
-# SpotLocal — Lecteur Musical Web & Local (Zéro Clé API)
+# SpotLocal — Lecteur Musical Web & Local 100 % Intégral (Zéro Clé API)
 
 > **Démo Web en ligne (GitHub Pages) :** **[https://skailexcode.github.io/SpotLocal/](https://skailexcode.github.io/SpotLocal/)**
 
 **SpotLocal** est un lecteur musical open-source indépendant (licence MIT) conçu prioritairement pour un **navigateur Web** tout en conservant un mode bureau optionnel (Electron `.exe`).
 
-Il réunit au même endroit **vos fichiers audio personnels** (`.mp3`, `.flac`, `.wav`, `.m4a`), **vos liens de partage YouTube / YouTube Music** via le lecteur officiel YouTube IFrame et un **double moteur de découverte Apple Music / iTunes + Deezer** — **sans aucun compte, sans tracker et sans aucune clé API à configurer**.
+Il réunit au même endroit **5 016 musiques en lecture intégrale via YouTube** (`2 234` artistes, aucun extrait coupé à 30 secondes), **l'ajout instantané de n'importe quel lien YouTube / YouTube Music** et **vos fichiers audio personnels** (`.mp3`, `.flac`, `.wav`, `.m4a`) — **sans aucun compte, sans tracker et sans aucune clé API à configurer**.
 
 ---
 
 ## Points forts
 
-- **Import direct par lien de partage YouTube (Zéro Clé API)** : collez simplement un ou plusieurs liens (`https://youtu.be/...`, `youtube.com/watch?v=...`, `music.youtube.com/watch?v=...`) dans l'accueil, la barre de recherche ou la modale dédiée (`Y`). Le titre, l'artiste et la pochette sont extraits automatiquement côté navigateur via `oEmbed`, et la lecture intégrale passe par le lecteur officiel **YouTube IFrame Player API**.
-- **Lecture MP3 locale instantanée dans le navigateur** : glissez-déposez vos fichiers audio n'importe où sur la fenêtre (lecture directe via `Blob URL` HTML5, aucun envoi sur un serveur).
-- **Double moteur gratuit Apple Music / iTunes + Deezer (Zéro Clé API)** : interrogation simultanée depuis le navigateur d'**Apple iTunes Search API (CORS)** et de **Deezer Public API (JSONP officiel)** + relais serveur parallèle, avec fusion intelligente des résultats, filtres par source (*Fusion*, *Deezer*, *Apple Music*), **Top Tendances en direct** et renouvellement automatique des jetons audio signés Deezer (`hdnea=exp=...`).
-- **Persistance légère & sauvegarde JSON portable** : stockage delta dans `localStorage` (~3 Ko au lieu de plusieurs Mo) + export/import complet de votre bibliothèque au format `.json`.
+- **Catalogue embarqué de 5 016 titres en lecture intégrale (YouTube IFrame)** : explorez immédiatement **5 016 morceaux et clips complets** répartis en 9 univers (*Scène Française*, *Rap FR*, *Pop*, *Rock & Légendes*, *Rap US & R&B*, *Électro & Dance*, *Afro, Reggae & Latino*, *K-Pop & J-Pop*, *Cinéma & Instrumental*) — zéro extrait de 30 secondes.
+- **Accueil vierge type première visite** : aucune playlist pré-enregistrée ni favori imposé au premier lancement — créez librement vos propres playlists et votre liste de titres likés.
+- **Import direct par lien de partage YouTube (Zéro Clé API)** : collez simplement un ou plusieurs liens (`https://youtu.be/...`, `youtube.com/watch?v=...`, `music.youtube.com/watch?v=...`) dans l'accueil, la barre de recherche ou la modale dédiée (`Y`). Le titre, l'artiste et la miniature sont extraits automatiquement côté navigateur via `oEmbed`.
+- **Lecture MP3 locale persistante dans le navigateur** : glissez-déposez vos fichiers audio n'importe où sur la fenêtre (stockage local `IndexedDB` + lecture directe HTML5, aucun envoi sur un serveur).
+- **Persistance légère & sauvegarde JSON portable** : stockage delta dans `localStorage` + export/import complet de vos playlists et favoris au format `.json`.
 - **Expérience Web complète** :
   - Mode vidéo **Mini-lecteur (PiP)** et **Mode Cinéma** sans rechargement du flux YouTube (`V`).
   - **Minuterie de mise en veille** (15, 30, 45, 60 min ou fin du titre).
-  - **Filtres par genre, par source audio** (`MP3`, `YouTube`, `Toutes`) et navigation par **Artiste**.
+  - **Recherche classée instantanée (`< 5 ms`)** sur les 5 016 titres + filtres par genre et par artiste.
   - **Raccourcis clavier** (`Espace`, `M`, `S`, `R`, `L`, `Y`, `V`, `/`, `?`) et intégration **Media Session API** (touches multimédia du clavier / OS).
   - Interface **responsive** (barre latérale bureau + barre de navigation mobile sur petits écrans).
 

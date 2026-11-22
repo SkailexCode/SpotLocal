@@ -1,29 +1,23 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Check,
-  Disc3,
+  ExternalLink,
+  Heart,
   Link2,
   Loader2,
   Pause,
   Play,
   Plus,
   Search,
-  Sparkles,
   Youtube,
 } from 'lucide-react';
-import type {
-  CatalogProviderFilter,
-  Playlist,
-  ResolvedYouTubeMeta,
-  SearchResultTrack,
-  Track,
-} from '../types/music';
-import { extractYouTubeVideoId, filterTracks } from '../utils/musicLogic';
+import type { Playlist, ResolvedYouTubeMeta, Track } from '../types/music';
 import {
-  resolveYouTubeMetadataClient,
-  searchCatalogDetailed,
-  type CatalogSearchBundle,
-} from '../utils/webCatalogSearch';
+  extractYouTubeVideoId,
+  getYouTubeSearchUrl,
+  searchRankedTracks,
+} from '../utils/musicLogic';
+import { resolveYouTubeMetadataClient } from '../utils/webCatalogSearch';
 import { AlbumCover } from './AlbumCover';
 import type { YouTubeTrackDraft } from './YouTubeLinkModal';
 
@@ -35,11 +29,8 @@ interface SearchViewProps {
   currentTrackId: string | null;
   isPlaying: boolean;
   onPlayLibraryTrack: (track: Track, queue: Track[]) => void;
-  onPlaySearchResult: (result: SearchResultTrack) => void;
-  onAddSearchResultToLibrary: (
-    result: SearchResultTrack,
-    playlistId?: string
-  ) => void;
+  onToggleLike: (trackId: string) => void;
+  onAddTrackToPlaylist: (trackId: string, playlistId: string) => void;
   onAddYouTubeDrafts: (
     drafts: YouTubeTrackDraft[],
     playlistId?: string,
@@ -50,34 +41,34 @@ interface SearchViewProps {
 
 const DISCOVER_TOPICS = [
   {
-    label: 'Variété & Pop Française',
-    query: 'Stromae Angèle Orelsan Clara Luciani',
+    label: 'Scène Française',
+    query: 'Stromae Angèle Indila Clara Luciani Indochine',
     tone: 'from-emerald-800 to-zinc-900',
   },
   {
-    label: 'Cinéma & Bandes Originales',
-    query: 'Hans Zimmer Ludovico Einaudi Yann Tiersen',
-    tone: 'from-indigo-800 to-zinc-900',
-  },
-  {
-    label: 'Rock & Classiques',
-    query: 'Queen Pink Floyd Nirvana Beatles',
-    tone: 'from-rose-800 to-zinc-900',
-  },
-  {
-    label: 'Électro & Club',
-    query: 'Daft Punk Avicii David Guetta Kygo',
-    tone: 'from-cyan-800 to-zinc-900',
-  },
-  {
-    label: 'Rap & Hip-Hop',
-    query: 'Eminem Kendrick Lamar Nekfeu Damso',
+    label: 'Rap Français',
+    query: 'Orelsan Nekfeu Damso Ninho PNL Hamza Gims',
     tone: 'from-amber-800 to-zinc-900',
   },
   {
     label: 'Hits Pop Internationaux',
     query: 'The Weeknd Billie Eilish Dua Lipa Bruno Mars',
     tone: 'from-purple-800 to-zinc-900',
+  },
+  {
+    label: 'Rock & Légendes',
+    query: 'Queen Nirvana Pink Floyd Beatles Linkin Park',
+    tone: 'from-rose-800 to-zinc-900',
+  },
+  {
+    label: 'Électro & Dance',
+    query: 'Daft Punk Avicii David Guetta DJ Snake Justice',
+    tone: 'from-cyan-800 to-zinc-900',
+  },
+  {
+    label: 'Cinéma & Instrumental',
+    query: 'Hans Zimmer Ludovico Einaudi Yann Tiersen',
+    tone: 'from-indigo-800 to-zinc-900',
   },
 ];
 
@@ -89,23 +80,13 @@ export const SearchView = memo(function SearchView({
   currentTrackId,
   isPlaying,
   onPlayLibraryTrack,
-  onPlaySearchResult,
-  onAddSearchResultToLibrary,
+  onToggleLike,
+  onAddTrackToPlaylist,
   onAddYouTubeDrafts,
   onOpenYouTubeModal,
 }: SearchViewProps) {
-  const [bundle, setBundle] = useState<CatalogSearchBundle>({
-    merged: [],
-    deezer: [],
-    itunes: [],
-  });
-  const [providerFilter, setProviderFilter] =
-    useState<CatalogProviderFilter>('all');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [targetPlaylistId, setTargetPlaylistId] = useState<string>('liked');
 
-  // Direct YouTube URL detection right from the search input
   const detectedYtVideoId = useMemo(
     () => extractYouTubeVideoId(query),
     [query]
@@ -138,84 +119,11 @@ export const SearchView = memo(function SearchView({
     };
   }, [detectedYtVideoId]);
 
-  // Local library instant matches
-  const localMatches = useMemo(() => {
+  const rankedMatches = useMemo(() => {
     const trimmed = query.trim();
     if (!trimmed || detectedYtVideoId) return [];
-    return filterTracks(libraryTracks, trimmed).slice(0, 12);
+    return searchRankedTracks(libraryTracks, trimmed, 120);
   }, [libraryTracks, query, detectedYtVideoId]);
-
-  // Parallel Apple iTunes (CORS) + Deezer (JSONP) + Server catalog search
-  useEffect(() => {
-    const trimmed = query.trim();
-    if (!trimmed || detectedYtVideoId) {
-      setBundle({ merged: [], deezer: [], itunes: [] });
-      setError(null);
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const resultBundle = await searchCatalogDetailed(
-          trimmed,
-          controller.signal
-        );
-        if (!controller.signal.aborted) {
-          setBundle(resultBundle);
-        }
-      } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          setError('Impossible de joindre les catalogues Apple & Deezer.');
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }, 240);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, detectedYtVideoId]);
-
-  const displayedOnlineResults = useMemo(() => {
-    if (providerFilter === 'deezer') return bundle.deezer;
-    if (providerFilter === 'itunes') return bundle.itunes;
-    if (providerFilter === 'local') return [];
-    return bundle.merged;
-  }, [bundle, providerFilter]);
-
-  const libraryLookupSet = useMemo(() => {
-    const ids = new Set<string>();
-    const titleArtistPairs = new Set<string>();
-    for (const t of libraryTracks) {
-      ids.add(t.id);
-      if (t.deezerId) ids.add(`dz-${t.deezerId}`);
-      if (t.itunesId) ids.add(`it-${t.itunesId}`);
-      titleArtistPairs.add(
-        `${t.title.toLowerCase()}::${t.artist.split(',')[0].trim().toLowerCase()}`
-      );
-    }
-    return { ids, titleArtistPairs };
-  }, [libraryTracks]);
-
-  const isInLibrary = (item: SearchResultTrack) => {
-    if (libraryLookupSet.ids.has(item.externalId)) return true;
-    if (item.deezerId && libraryLookupSet.ids.has(`dz-${item.deezerId}`)) {
-      return true;
-    }
-    if (item.itunesId && libraryLookupSet.ids.has(`it-${item.itunesId}`)) {
-      return true;
-    }
-    const pair = `${item.title.toLowerCase()}::${item.artist.split(',')[0].trim().toLowerCase()}`;
-    return libraryLookupSet.titleArtistPairs.has(pair);
-  };
 
   const ytAlreadyAdded = Boolean(
     detectedYtVideoId &&
@@ -228,20 +136,19 @@ export const SearchView = memo(function SearchView({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display font-bold text-2xl sm:text-3xl text-white">
-              Recherche Multi-API
+              Recherche YouTube Intégrale
             </h1>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[11px] font-semibold">
-              Deezer
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[11px] font-semibold">
-              Apple Music
-            </span>
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 text-[11px] font-semibold">
-              Lien YouTube
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30 text-[11px] font-semibold">
+              <Youtube className="w-3 h-3 fill-current" />
+              {libraryTracks.length.toLocaleString('fr-FR')} clips complets
             </span>
           </div>
           <p className="text-sm text-[#b3b3b3] mt-1">
-            Interrogation simultanée gratuite d&apos;Apple iTunes &amp; Deezer, ou collez directement un lien{' '}
+            Recherchez parmi les{' '}
+            <strong className="text-white">
+              {libraryTracks.length.toLocaleString('fr-FR')} titres intégraux
+            </strong>{' '}
+            ou collez directement n&apos;importe quel lien{' '}
             <code className="px-1.5 py-0.5 rounded bg-white/10 text-xs text-white font-mono-tabular">
               youtu.be/...
             </code>
@@ -337,7 +244,7 @@ export const SearchView = memo(function SearchView({
                   className="inline-flex items-center gap-2 h-10 px-4 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-black" />
-                  <span>Écouter maintenant</span>
+                  <span>Écouter en entier</span>
                 </button>
 
                 <button
@@ -365,7 +272,7 @@ export const SearchView = memo(function SearchView({
                   {ytAlreadyAdded ? (
                     <>
                       <Check className="w-4 h-4" />
-                      <span>Déjà dans la bibliothèque</span>
+                      <span>Déjà dans le catalogue</span>
                     </>
                   ) : (
                     <>
@@ -382,7 +289,6 @@ export const SearchView = memo(function SearchView({
 
       {!query.trim() ? (
         <div className="space-y-6">
-          {/* Quick batch YouTube Link banner */}
           <div className="p-4 rounded-xl bg-[#181818] border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center text-red-400 shrink-0">
@@ -390,10 +296,10 @@ export const SearchView = memo(function SearchView({
               </div>
               <div>
                 <p className="text-sm font-semibold text-white">
-                  Import rapide par liens de partage YouTube
+                  Ajoutez n&apos;importe quelle musique YouTube en 1 seconde
                 </p>
                 <p className="text-xs text-[#b3b3b3]">
-                  Collez un ou plusieurs liens YouTube / YouTube Music en lot sans aucune configuration d&apos;API.
+                  Collez un ou plusieurs liens YouTube / YouTube Music pour les écouter en entier.
                 </p>
               </div>
             </div>
@@ -409,7 +315,7 @@ export const SearchView = memo(function SearchView({
 
           <div className="space-y-4">
             <h2 className="font-display font-bold text-lg text-white">
-              Explorer les catalogues Apple Music &amp; Deezer
+              Suggestions de recherche rapide
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {DISCOVER_TOPICS.map((topic) => (
@@ -424,7 +330,7 @@ export const SearchView = memo(function SearchView({
                   </span>
                   <span className="text-xs text-white/75 flex items-center gap-1.5">
                     <Search className="w-3.5 h-3.5" />
-                    Rechercher sur Apple &amp; Deezer
+                    Explorer en lecture intégrale
                   </span>
                 </button>
               ))}
@@ -432,282 +338,163 @@ export const SearchView = memo(function SearchView({
           </div>
         </div>
       ) : !detectedYtVideoId ? (
-        <div className="space-y-5">
-          {/* Provider Filter Tabs */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.08] pb-3">
-            <button
-              type="button"
-              onClick={() => setProviderFilter('all')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                providerFilter === 'all'
-                  ? 'bg-white text-black'
-                  : 'bg-[#1f1f1f] text-[#d0d0d0] hover:bg-[#2a2a2a]'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Fusion Apple + Deezer ({bundle.merged.length})</span>
-            </button>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.08] pb-3">
+            <p className="text-xs font-semibold text-[#b3b3b3]">
+              <span className="text-white font-bold">{rankedMatches.length}</span>{' '}
+              {rankedMatches.length > 1
+                ? 'résultats intégraux trouvés'
+                : 'résultat intégral trouvé'}{' '}
+              pour « {query} »
+            </p>
 
-            <button
-              type="button"
-              onClick={() => setProviderFilter('deezer')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                providerFilter === 'deezer'
-                  ? 'bg-purple-500 text-white'
-                  : 'bg-[#1f1f1f] text-purple-300 hover:bg-[#2a2a2a]'
-              }`}
+            <a
+              href={getYouTubeSearchUrl(query)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-600/15 hover:bg-red-600/25 text-red-300 text-xs font-semibold transition-colors"
             >
-              <span>Deezer ({bundle.deezer.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setProviderFilter('itunes')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                providerFilter === 'itunes'
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-[#1f1f1f] text-rose-300 hover:bg-[#2a2a2a]'
-              }`}
-            >
-              <span>Apple Music / iTunes ({bundle.itunes.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setProviderFilter('local')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                providerFilter === 'local'
-                  ? 'bg-[#1ED760] text-black'
-                  : 'bg-[#1f1f1f] text-[#1ED760] hover:bg-[#2a2a2a]'
-              }`}
-            >
-              <Disc3 className="w-3.5 h-3.5" />
-              <span>Ma Bibliothèque ({localMatches.length})</span>
-            </button>
+              <Youtube className="w-3.5 h-3.5 fill-current" />
+              <span>Chercher d&apos;autres clips sur YouTube</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
 
-          {/* Instant Local Library Matches */}
-          {(providerFilter === 'all' || providerFilter === 'local') &&
-            localMatches.length > 0 && (
-              <div className="space-y-2">
-                <h2 className="font-display font-bold text-xs text-[#b3b3b3] uppercase tracking-wider px-1">
-                  Dans votre bibliothèque ({localMatches.length})
-                </h2>
-                <div className="space-y-1">
-                  {(providerFilter === 'local'
-                    ? localMatches
-                    : localMatches.slice(0, 4)
-                  ).map((track) => {
-                    const active = currentTrackId === track.id && isPlaying;
-                    return (
-                      <div
-                        key={track.id}
-                        className="group flex items-center justify-between gap-4 px-3 py-2 rounded-md bg-white/[0.03] hover:bg-white/[0.08] transition-colors"
+          {rankedMatches.length === 0 ? (
+            <div className="py-12 text-center space-y-4">
+              <p className="text-base font-semibold text-white">
+                « {query} » n&apos;est pas encore dans les{' '}
+                {libraryTracks.length.toLocaleString('fr-FR')} titres intégrés
+              </p>
+              <p className="text-sm text-[#b3b3b3] max-w-md mx-auto">
+                Ouvrez la recherche YouTube ci-dessous, copiez le lien de partage de la vidéo et collez-le dans la barre de recherche pour l&apos;écouter en entier !
+              </p>
+              <a
+                href={getYouTubeSearchUrl(query)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors"
+              >
+                <Youtube className="w-4 h-4 fill-black" />
+                <span>Trouver « {query} » sur YouTube</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-1" data-testid="search-results-list">
+              {rankedMatches.map((track) => {
+                const active = currentTrackId === track.id && isPlaying;
+                const inTargetPlaylist =
+                  targetPlaylistId === 'liked'
+                    ? track.liked
+                    : Boolean(
+                        playlists
+                          .find((p) => p.id === targetPlaylistId)
+                          ?.trackIds.includes(track.id)
+                      );
+
+                return (
+                  <div
+                    key={track.id}
+                    className="group flex items-center justify-between gap-4 px-3 py-2 rounded-md hover:bg-white/[0.07] transition-colors track-row-contain"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => onPlayLibraryTrack(track, rankedMatches)}
+                        aria-label={
+                          active
+                            ? `Mettre en pause ${track.title}`
+                            : `Écouter ${track.title}`
+                        }
+                        className="relative w-11 h-11 rounded-[4px] overflow-hidden shrink-0 cursor-pointer"
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onPlayLibraryTrack(track, localMatches)
-                            }
-                            aria-label={
-                              active
-                                ? `Mettre en pause ${track.title}`
-                                : `Écouter ${track.title}`
-                            }
-                            className="relative w-11 h-11 rounded-[4px] overflow-hidden shrink-0 cursor-pointer"
-                          >
-                            <AlbumCover
-                              src={track.coverUrl}
-                              alt={track.title}
-                              sizeClass="w-11 h-11"
-                            />
-                            <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              {active ? (
-                                <Pause className="w-5 h-5 text-white fill-white" />
-                              ) : (
-                                <Play className="w-5 h-5 text-white fill-white" />
-                              )}
-                            </span>
-                          </button>
-                          <div className="min-w-0 flex-1">
-                            <p
-                              className={`text-[15px] font-medium truncate ${
-                                currentTrackId === track.id
-                                  ? 'text-[#1ED760]'
-                                  : 'text-white'
-                              }`}
-                            >
-                              {track.title}
-                            </p>
-                            <p className="text-[13px] text-[#b3b3b3] truncate">
-                              {track.artist} · {track.album}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="text-[11px] text-[#1ED760] font-semibold px-2.5 py-1 rounded-full bg-[#1ED760]/10">
-                          Bibliothèque
+                        <AlbumCover
+                          src={track.coverUrl}
+                          alt={track.title}
+                          sizeClass="w-11 h-11"
+                        />
+                        <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          {active ? (
+                            <Pause className="w-5 h-5 text-white fill-white" />
+                          ) : (
+                            <Play className="w-5 h-5 text-white fill-white" />
+                          )}
                         </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      </button>
 
-          {/* Online Catalog Results (Apple + Deezer) */}
-          {providerFilter !== 'local' && (
-            <div className="space-y-2">
-              <h2 className="font-display font-bold text-xs text-[#b3b3b3] uppercase tracking-wider px-1">
-                {providerFilter === 'deezer'
-                  ? 'Catalogue Deezer Public API'
-                  : providerFilter === 'itunes'
-                    ? 'Catalogue Apple iTunes Search API'
-                    : 'Résultats fusionnés & dédupliqués (Apple + Deezer)'}
-              </h2>
-
-              {loading ? (
-                <div className="space-y-2.5">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-16 rounded-md bg-[#1b1b1b] animate-pulse"
-                    />
-                  ))}
-                </div>
-              ) : error ? (
-                <div className="py-10 text-center space-y-2">
-                  <p className="text-sm text-rose-400">{error}</p>
-                </div>
-              ) : displayedOnlineResults.length === 0 ? (
-                <div className="py-10 text-center space-y-2">
-                  <p className="text-base font-semibold text-white">
-                    Aucun résultat sur cette source pour « {query} »
-                  </p>
-                  <p className="text-sm text-[#b3b3b3]">
-                    Essayez un autre filtre ci-dessus ou collez directement un lien de partage YouTube !
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-1" data-testid="search-results-list">
-                  {displayedOnlineResults.map((item) => {
-                    const added = isInLibrary(item);
-                    const active =
-                      currentTrackId === item.externalId && isPlaying;
-                    const providers = item.providerSources || [item.source];
-                    const hasDeezer = providers.includes('deezer');
-                    const hasApple = providers.includes('itunes');
-
-                    return (
-                      <div
-                        key={item.externalId}
-                        className="group flex items-center justify-between gap-4 px-3 py-2 rounded-md hover:bg-white/[0.07] transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={() => onPlaySearchResult(item)}
-                            aria-label={
-                              active
-                                ? `Mettre en pause ${item.title}`
-                                : `Écouter ${item.title}`
-                            }
-                            className="relative w-11 h-11 rounded-[4px] overflow-hidden shrink-0 cursor-pointer"
-                          >
-                            <AlbumCover
-                              src={item.coverUrl}
-                              alt={item.title}
-                              sizeClass="w-11 h-11"
-                            />
-                            <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              {active ? (
-                                <Pause className="w-5 h-5 text-white fill-white" />
-                              ) : (
-                                <Play className="w-5 h-5 text-white fill-white" />
-                              )}
-                            </span>
-                          </button>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <button
-                                type="button"
-                                onClick={() => onPlaySearchResult(item)}
-                                className={`text-[15px] font-medium truncate text-left hover:underline cursor-pointer ${
-                                  active ? 'text-[#1ED760]' : 'text-white'
-                                }`}
-                              >
-                                {item.title}
-                              </button>
-                              {item.explicit && (
-                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-[2px] bg-[#b3b3b3]/80 text-[#121212] text-[10px] font-bold leading-none shrink-0">
-                                  E
-                                </span>
-                              )}
-                              {hasDeezer && (
-                                <span
-                                  title="Disponible via Deezer Public API"
-                                  className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[10px] font-bold shrink-0"
-                                >
-                                  Deezer
-                                </span>
-                              )}
-                              {hasApple && (
-                                <span
-                                  title="Disponible via Apple iTunes API"
-                                  className="hidden sm:inline-flex px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 text-[10px] font-bold shrink-0"
-                                >
-                                  Apple
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[13px] text-[#b3b3b3] truncate">
-                              {item.artist} · {item.album}
-                              {item.releaseYear ? ` (${item.releaseYear})` : ''}
-                              {item.genre ? ` · ${item.genre}` : ''}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span className="hidden sm:inline text-xs text-[#b3b3b3] font-mono-tabular">
-                            {item.durationLabel}
-                          </span>
-
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <button
                             type="button"
                             onClick={() =>
-                              onAddSearchResultToLibrary(
-                                item,
-                                targetPlaylistId === 'liked'
-                                  ? undefined
-                                  : targetPlaylistId
-                              )
+                              onPlayLibraryTrack(track, rankedMatches)
                             }
-                            className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
-                              added
-                                ? 'bg-[#1ED760]/15 text-[#1ED760] border border-[#1ED760]/40'
-                                : 'bg-white text-black hover:bg-[#e5e5e5]'
+                            className={`text-[15px] font-medium truncate text-left hover:underline cursor-pointer ${
+                              currentTrackId === track.id
+                                ? 'text-[#1ED760]'
+                                : 'text-white'
                             }`}
                           >
-                            {added ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                <span>Ajouté</span>
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="w-3.5 h-3.5" />
-                                <span>Ajouter</span>
-                              </>
-                            )}
+                            {track.title}
                           </button>
+                          <span className="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 text-[10px] font-bold shrink-0">
+                            <Youtube className="w-2.5 h-2.5 fill-current" />
+                            Intégral
+                          </span>
                         </div>
+                        <p className="text-[13px] text-[#b3b3b3] truncate">
+                          {track.artist}
+                          {track.genre ? ` · ${track.genre}` : ''}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="hidden sm:inline text-xs text-[#b3b3b3] font-mono-tabular">
+                        {track.durationLabel}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (targetPlaylistId === 'liked') {
+                            onToggleLike(track.id);
+                          } else {
+                            onAddTrackToPlaylist(track.id, targetPlaylistId);
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
+                          inTargetPlaylist
+                            ? 'bg-[#1ED760]/15 text-[#1ED760] border border-[#1ED760]/40'
+                            : 'bg-white/10 text-white hover:bg-white/20'
+                        }`}
+                      >
+                        {targetPlaylistId === 'liked' ? (
+                          <>
+                            <Heart
+                              className={`w-3.5 h-3.5 ${
+                                track.liked ? 'fill-[#1ED760]' : ''
+                              }`}
+                            />
+                            <span>{track.liked ? 'Liké' : 'Liker'}</span>
+                          </>
+                        ) : inTargetPlaylist ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Ajouté</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Ajouter</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
