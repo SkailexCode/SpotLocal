@@ -241,9 +241,12 @@ interface CatalogManifest {
   shards: string[];
 }
 
+const NON_ASCII_RE = /[^\x00-\x7f]/;
+
 export function foldSearchText(str: string): string {
-  return str
-    .toLowerCase()
+  const lower = str.toLowerCase();
+  if (!NON_ASCII_RE.test(lower)) return lower.trim();
+  return lower
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
@@ -258,7 +261,7 @@ function resolveCatalogUrl(relPath: string): string {
   return `${normalizedBase}${relPath.replace(/^\//, '')}`;
 }
 
-const MAX_CAPACITY = 125_000;
+const MAX_CAPACITY = 360_000;
 
 class CatalogStore {
   private count = 0;

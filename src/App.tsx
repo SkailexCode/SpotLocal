@@ -671,8 +671,31 @@ export default function App() {
     );
   }, [currentTrackId, ytCandidateIndex, queueIds, startPlaybackForTrack, showToast]);
 
+  const registerExternalTracksIfNeeded = useCallback((candidates: Track[]) => {
+    const missing: Track[] = [];
+    for (const c of candidates) {
+      if (!c || !c.id) continue;
+      if (catalogStore.hasCatalogId(c.id)) continue;
+      if (overlayRef.current.customTracks.some((t) => t.id === c.id)) continue;
+      missing.push(c);
+    }
+    if (missing.length > 0) {
+      setCustomTracks((prev) => {
+        const seen = new Set(prev.map((t) => t.id));
+        const toAdd = missing.filter((t) => !seen.has(t.id));
+        return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+      });
+    }
+  }, []);
+
   const handlePlayTrack = useCallback(
     (track: Track, contextQueue?: Track[]) => {
+      registerExternalTracksIfNeeded(
+        contextQueue && contextQueue.length > 0
+          ? [track, ...contextQueue.slice(0, 60)]
+          : [track]
+      );
+
       if (contextQueue && contextQueue.length > 0) {
         const sliced =
           contextQueue.length > 300
@@ -716,6 +739,7 @@ export default function App() {
       activeAudioSource,
       isPlaying,
       queueIds,
+      registerExternalTracksIfNeeded,
       startPlaybackForTrack,
     ]
   );
@@ -902,15 +926,21 @@ export default function App() {
     [activeAudioSource]
   );
 
-  // O(1) Like Toggle!
-  const handleToggleLike = useCallback((trackId: string) => {
-    setLikedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(trackId)) next.delete(trackId);
-      else next.add(trackId);
-      return next;
-    });
-  }, []);
+  // O(1) Like Toggle (also registers any live 100M+ track automatically!)
+  const handleToggleLike = useCallback(
+    (trackId: string, liveTrack?: Track) => {
+      if (liveTrack) {
+        registerExternalTracksIfNeeded([liveTrack]);
+      }
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(trackId)) next.delete(trackId);
+        else next.add(trackId);
+        return next;
+      });
+    },
+    [registerExternalTracksIfNeeded]
+  );
 
   // Playlist Actions
   const handleCreatePlaylist = useCallback(
@@ -942,8 +972,12 @@ export default function App() {
   );
 
   const handleAddTrackToPlaylist = useCallback(
-    (trackId: string, playlistId: string) => {
-      const track = catalogStore.getTrackById(trackId, overlayRef.current);
+    (trackId: string, playlistId: string, liveTrack?: Track) => {
+      if (liveTrack) {
+        registerExternalTracksIfNeeded([liveTrack]);
+      }
+      const track =
+        liveTrack || catalogStore.getTrackById(trackId, overlayRef.current);
       setPlaylists((prev) =>
         prev.map((pl) => {
           if (pl.id !== playlistId) return pl;
@@ -958,7 +992,7 @@ export default function App() {
       const plName = playlists.find((p) => p.id === playlistId)?.name;
       if (plName) showToast(`Ajouté à « ${plName} ».`);
     },
-    [playlists, showToast]
+    [playlists, registerExternalTracksIfNeeded, showToast]
   );
 
   const handleRemoveTrackFromPlaylist = useCallback(
@@ -1914,7 +1948,7 @@ export default function App() {
           }`}
         >
           <Disc3 className="w-4 h-4" />
-          <span>112k</span>
+          <span>{Math.round(catalogCount / 1000)}k</span>
         </button>
         <button
           type="button"

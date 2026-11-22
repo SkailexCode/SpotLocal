@@ -227,28 +227,34 @@ export const HomeView = memo(function HomeView({
 
           <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-5 relative">
             <div className="space-y-2.5 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#1ED760]/12 border border-[#1ED760]/25 text-[#1ED760] text-xs font-semibold">
+              <div className="inline-flex flex-wrap items-center gap-2 px-3 py-1 rounded-full bg-[#1ED760]/12 border border-[#1ED760]/25 text-[#1ED760] text-xs font-semibold">
                 <Flame className="w-3.5 h-3.5" />
                 <span>
-                  100 % Lecture Intégrale · Zéro Extrait de 30s · Zéro Clé API
+                  {catalogCount.toLocaleString('fr-FR')} titres embarqués + Recherche Mondiale 100M+ YouTube en direct
                 </span>
               </div>
 
               <h1 className="font-display font-extrabold text-2xl sm:text-4xl text-white leading-tight">
-                {catalogCount.toLocaleString('fr-FR')} musiques prêtes à écouter
+                Tout le catalogue musical mondial, en intégralité
               </h1>
 
               <p className="text-sm sm:text-[15px] text-[#9ca3b0] leading-relaxed">
-                Explorez{' '}
+                Naviguez instantanément dans{' '}
                 <strong className="text-white">
+                  {catalogCount.toLocaleString('fr-FR')} titres embarqués
+                </strong>{' '}
+                (<strong className="text-white">
                   {artistCount.toLocaleString('fr-FR')} artistes
-                </strong>{' '}
-                et plus de{' '}
+                </strong>
+                ,{' '}
                 <strong className="text-white">
-                  {totalHours.toLocaleString('fr-FR')} heures
+                  {totalHours.toLocaleString('fr-FR')} h
+                </strong>
+                ) et accédez en direct aux{' '}
+                <strong className="text-white">
+                  100M+ musiques de YouTube Music
                 </strong>{' '}
-                de morceaux complets via YouTube, lancez des radios par ambiance
-                ou glissez vos propres fichiers MP3 locaux.
+                depuis la recherche — sans compte et sans clé API.
               </p>
             </div>
 
