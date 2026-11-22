@@ -1,0 +1,6 @@
+{
+  "name": "SpotLocal",
+  "description": "Lecteur de musique local façon Spotify avec gestion de playlists, recherche temps réel, import MP3 et build Desktop .exe.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

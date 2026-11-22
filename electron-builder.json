@@ -1,0 +1,25 @@
+{
+  "appId": "com.spotlocal.player",
+  "productName": "SpotLocal",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "electron/**/*",
+    "package.json",
+    "!node_modules/**/*"
+  ],
+  "extraResources": [
+    "dist/**/*",
+    "dist-electron/server.cjs"
+  ],
+  "win": {
+    "target": [
+      "portable"
+    ],
+    "signAndEditExecutable": false
+  },
+  "portable": {
+    "artifactName": "SpotLocal-Portable.exe"
+  }
+}
