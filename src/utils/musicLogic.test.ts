@@ -170,7 +170,7 @@ test('parseYouTubeTitleAndChannel cleans official tags and splits Artist - Title
   );
 });
 
-test('112,000-track catalog integrity, clean first-visit state, and instant CatalogStore queries', () => {
+test('332k+ embedded catalog integrity, clean first-visit state, and instant CatalogStore queries', () => {
   assert.equal(DEFAULT_PLAYLISTS.length, 0);
   assert.equal(SEED_TRACKS.length, 1600);
   assert.ok(SEED_TRACKS.every((t) => t.liked === false));
@@ -180,7 +180,7 @@ test('112,000-track catalog integrity, clean first-visit state, and instant Cata
     fs.readFileSync(path.join(catalogDir, 'manifest.json'), 'utf8')
   ) as { totalTracks: number; shards: string[] };
 
-  assert.ok(manifest.totalTracks >= 100000);
+  assert.ok(manifest.totalTracks >= 330000);
   let shardRowSum = 0;
   for (const shardFile of manifest.shards) {
     const rows = JSON.parse(

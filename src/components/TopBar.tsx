@@ -82,7 +82,7 @@ export const TopBar = memo(function TopBar({
                   isCatalogSyncing ? 'animate-ping' : ''
                 }`}
               />
-              {catalogCount.toLocaleString('fr-FR')} titres
+              {catalogCount.toLocaleString('fr-FR')} + 100M Live
             </span>
           </div>
         </button>
@@ -115,7 +115,7 @@ export const TopBar = memo(function TopBar({
               onSearchChange(e.target.value);
               if (activeView !== 'search') onOpenSearch();
             }}
-            placeholder={`Rechercher parmi ${catalogCount.toLocaleString('fr-FR')} musiques ou coller un lien YouTube…`}
+            placeholder={`Rechercher dans ${catalogCount.toLocaleString('fr-FR')} titres locaux + 100M+ YouTube en direct…`}
             className="w-full h-10 pl-10 pr-16 rounded-xl bg-[#11141e] hover:bg-[#161a27] focus:bg-[#171b29] text-[13.5px] text-white placeholder-[#7d8596] border border-white/[0.08] focus:border-[#1ED760]/65 focus:shadow-[0_0_0_3px_rgba(30,215,96,0.12)] outline-none transition-all"
           />
           {searchQuery ? (
@@ -144,7 +144,7 @@ export const TopBar = memo(function TopBar({
           className="hidden xl:inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-[#1ED760]/12 hover:bg-[#1ED760]/22 border border-[#1ED760]/30 text-[#1ED760] text-xs font-semibold transition-colors cursor-pointer"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Mix 112k</span>
+          <span>Mix {Math.round(catalogCount / 1000)}k</span>
         </button>
 
         <button

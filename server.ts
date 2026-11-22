@@ -54,6 +54,16 @@ class TtlCache<T> {
 }
 
 const youtubeIdsCache = new TtlCache<string[]>(60 * 60 * 1000, 300);
+const youtubeSearchCache = new TtlCache<
+  Array<{
+    videoId: string;
+    title: string;
+    artist: string;
+    durationSec: number;
+    durationLabel: string;
+    coverUrl: string;
+  }>
+>(30 * 60 * 1000, 400);
 const youtubeMetaCache = new TtlCache<{
   title: string;
   author_name: string;
@@ -155,6 +165,101 @@ async function findYoutubeVideoIds(query: string): Promise<string[]> {
     })
   );
   return verified.filter((x): x is string => Boolean(x)).slice(0, 4);
+}
+
+function parseDurationTextToSec(text?: string): number {
+  if (!text) return 0;
+  const parts = text
+    .trim()
+    .split(':')
+    .map((p) => Number.parseInt(p, 10));
+  if (parts.some((n) => !Number.isFinite(n))) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+async function searchYouTubeCatalogRich(query: string) {
+  const res = await fetch(
+    'https://www.youtube.com/youtubei/v1/search?prettyPrint=false',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: '2.20250201.00.00',
+            hl: 'fr',
+            gl: 'FR',
+          },
+        },
+        query,
+      }),
+    }
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as Record<string, unknown>;
+
+  const results: Array<{
+    videoId: string;
+    title: string;
+    artist: string;
+    durationSec: number;
+    durationLabel: string;
+    coverUrl: string;
+  }> = [];
+  const seen = new Set<string>();
+
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object' || results.length >= 24) return;
+    if (Array.isArray(node)) {
+      for (const child of node) walk(child);
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (obj.videoRenderer && typeof obj.videoRenderer === 'object') {
+      const vr = obj.videoRenderer as Record<string, unknown>;
+      const vid = typeof vr.videoId === 'string' ? vr.videoId : '';
+      if (/^[A-Za-z0-9_-]{11}$/.test(vid) && !seen.has(vid)) {
+        const titleRuns = (
+          vr.title as { runs?: Array<{ text?: string }> } | undefined
+        )?.runs;
+        const rawTitle = titleRuns?.map((r) => r.text || '').join('') || '';
+        const ownerRuns = (
+          (vr.ownerText || vr.longBylineText) as
+            | { runs?: Array<{ text?: string }> }
+            | undefined
+        )?.runs;
+        const rawArtist = (ownerRuns?.[0]?.text || 'YouTube').replace(
+          / - Topic$/i,
+          ''
+        );
+        const lenStr =
+          (vr.lengthText as { simpleText?: string } | undefined)?.simpleText ||
+          '';
+        const durSec = parseDurationTextToSec(lenStr);
+        if (rawTitle && durSec >= 30 && durSec <= 1800) {
+          seen.add(vid);
+          results.push({
+            videoId: vid,
+            title: rawTitle,
+            artist: rawArtist,
+            durationSec: durSec,
+            durationLabel: lenStr,
+            coverUrl: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+          });
+        }
+      }
+    }
+    for (const val of Object.values(obj)) {
+      walk(val);
+    }
+  };
+
+  walk(data);
+  return results;
 }
 
 async function createServer() {
@@ -291,6 +396,29 @@ async function createServer() {
       'application/zip',
       'SpotLocal-Portable-Windows.zip'
     );
+  });
+
+  app.get('/api/youtube/search', async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 2) {
+      res.json({ items: [] });
+      return;
+    }
+    const key = q.toLowerCase();
+    const cached = youtubeSearchCache.get(key);
+    if (cached) {
+      res.json({ items: cached, cached: true });
+      return;
+    }
+    try {
+      const items = await searchYouTubeCatalogRich(q);
+      if (items.length > 0) {
+        youtubeSearchCache.set(key, items);
+      }
+      res.json({ items });
+    } catch {
+      res.json({ items: [] });
+    }
   });
 
   app.get('/api/music/youtube', async (req, res) => {
