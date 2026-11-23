@@ -1,13 +1,5 @@
 import { memo, useMemo } from 'react';
-import {
-  Check,
-  Disc3,
-  Heart,
-  Pause,
-  Play,
-  Plus,
-  Shuffle,
-} from 'lucide-react';
+import { Check, Pause, Play, Plus, Shuffle } from 'lucide-react';
 import type { Playlist, Track } from '../types/music';
 import {
   CATALOG_GENRES,
@@ -15,7 +7,8 @@ import {
   catalogStore,
   type UserLibraryOverlay,
 } from '../utils/catalogEngine';
-import { AlbumCover } from './AlbumCover';
+import { AlbumCover, getPlaylistCoverUrls, MosaicCover } from './AlbumCover';
+import { LikedTracksPoster, VideoClipBadge } from './Logos';
 
 interface HomeViewProps {
   catalogVersion: number;
@@ -56,33 +49,54 @@ export const HomeView = memo(function HomeView({
   onPlaySmartMix,
   onToggleLike,
 }: HomeViewProps) {
+  const catalogMosaic = useMemo(() => {
+    void catalogVersion;
+    return catalogStore.getCatalogSampleCovers(4);
+  }, [catalogVersion]);
+
+  const moodCards = useMemo(() => {
+    void catalogVersion;
+    return CATALOG_MOODS.slice(0, 5).map((mood) => ({
+      ...mood,
+      covers: catalogStore.getMoodSampleCovers(mood.bit, 4),
+    }));
+  }, [catalogVersion]);
+
+  const genreCards = useMemo(() => {
+    void catalogVersion;
+    return CATALOG_GENRES.map((genre) => ({
+      ...genre,
+      covers: catalogStore.getGenreSampleCovers(genre.name, 4),
+    }));
+  }, [catalogVersion]);
+
   const shelves = useMemo(() => {
     void catalogVersion;
     return [
       {
         title: 'Scène Française',
         genre: 'Scène Française',
-        tracks: catalogStore.getShelfTracks('Scène Française', 10, overlay),
+        tracks: catalogStore.getShelfTracks('Scène Française', 8, overlay),
       },
       {
         title: 'Rap FR',
         genre: 'Rap FR',
-        tracks: catalogStore.getShelfTracks('Rap FR', 10, overlay),
+        tracks: catalogStore.getShelfTracks('Rap FR', 8, overlay),
       },
       {
         title: 'Pop',
         genre: 'Pop',
-        tracks: catalogStore.getShelfTracks('Pop', 10, overlay),
+        tracks: catalogStore.getShelfTracks('Pop', 8, overlay),
       },
       {
         title: 'Électro & Dance',
         genre: 'Électro & Dance',
-        tracks: catalogStore.getShelfTracks('Électro & Dance', 10, overlay),
+        tracks: catalogStore.getShelfTracks('Électro & Dance', 8, overlay),
       },
       {
         title: 'Rock & Alternative',
         genre: 'Rock & Alternative',
-        tracks: catalogStore.getShelfTracks('Rock & Alternative', 10, overlay),
+        tracks: catalogStore.getShelfTracks('Rock & Alternative', 8, overlay),
       },
     ];
   }, [catalogVersion, overlay]);
@@ -90,42 +104,54 @@ export const HomeView = memo(function HomeView({
   const renderTrackCard = (track: Track, sectionQueue: Track[]) => {
     const isCurrent = currentTrackId === track.id;
     const activePlaying = isCurrent && isPlaying;
+    const isYouTube = Boolean(track.youtubeVideoIds?.length);
 
     return (
       <div
         key={track.id}
-        className={`group p-3 rounded-xl studio-card flex flex-col relative ${
+        className={`group p-2.5 rounded-xl studio-card flex flex-col relative ${
           isCurrent ? 'border-[var(--accent)] bg-[var(--bg-row-active)]' : ''
         }`}
       >
         <button
           type="button"
           onClick={() => onPlayTrack(track, sectionQueue)}
-          className="relative aspect-square w-full mb-2.5 rounded-lg overflow-hidden cursor-pointer text-left"
+          className="relative aspect-video w-full mb-2.5 rounded-lg overflow-hidden cursor-pointer text-left bg-[var(--bg-hover)]"
         >
           <AlbumCover
             src={track.coverUrl}
+            videoIds={track.youtubeVideoIds}
             alt={track.title}
-            sizeClass="w-full h-full"
-            roundedClass="rounded-lg"
+            size="lg"
+            className="w-full h-full rounded-lg transition-transform duration-200 group-hover:scale-[1.03]"
           />
 
+          {track.durationLabel && (
+            <span
+              className={`absolute right-1.5 bottom-1.5 px-1.5 py-0.5 rounded bg-black/80 text-[11px] font-mono font-medium text-white leading-none transition-opacity duration-150 ${
+                activePlaying ? 'opacity-0' : 'group-hover:opacity-0'
+              }`}
+            >
+              {track.durationLabel}
+            </span>
+          )}
+
           <span
-            className={`absolute right-2 bottom-2 w-10 h-10 rounded-full bg-[var(--accent)] text-white flex items-center justify-center shadow-md transition-all duration-150 ${
+            className={`absolute right-2 bottom-2 w-9.5 h-9.5 rounded-full bg-[var(--accent)] text-white flex items-center justify-center shadow-md transition-all duration-150 ${
               activePlaying
                 ? 'opacity-100 translate-y-0'
                 : 'opacity-0 translate-y-1.5 group-hover:opacity-100 group-hover:translate-y-0'
             }`}
           >
             {activePlaying ? (
-              <Pause className="w-4.5 h-4.5 fill-current" />
+              <Pause className="w-4 h-4 fill-current" />
             ) : (
-              <Play className="w-4.5 h-4.5 fill-current ml-0.5" />
+              <Play className="w-4 h-4 fill-current ml-0.5" />
             )}
           </span>
         </button>
 
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2 px-0.5">
           <button
             type="button"
             onClick={() => onPlayTrack(track, sectionQueue)}
@@ -138,9 +164,12 @@ export const HomeView = memo(function HomeView({
             >
               {track.title}
             </p>
-            <p className="text-xs text-[var(--text-sub)] truncate mt-0.5">
-              {track.artist}
-            </p>
+            <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+              {isYouTube && <VideoClipBadge />}
+              <p className="text-xs text-[var(--text-sub)] truncate">
+                {track.artist}
+              </p>
+            </div>
           </button>
 
           <button
@@ -185,16 +214,17 @@ export const HomeView = memo(function HomeView({
           </button>
         </div>
 
-        {/* Quick Shortcuts */}
+        {/* Quick Shortcuts with real posters */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <button
             type="button"
             onClick={onOpenLiked}
             className="flex items-center gap-3.5 pr-4 rounded-lg studio-card overflow-hidden text-left cursor-pointer"
           >
-            <div className="w-13 h-13 bg-[#d96b34] flex items-center justify-center shrink-0">
-              <Heart className="w-5 h-5 text-white fill-white" />
-            </div>
+            <LikedTracksPoster
+              className="w-14 h-14 rounded-none"
+              iconClassName="w-5 h-5"
+            />
             <span className="font-display font-semibold text-sm text-[var(--text-main)] truncate">
               Titres likés
             </span>
@@ -205,9 +235,12 @@ export const HomeView = memo(function HomeView({
             onClick={() => onOpenAllTracks('all')}
             className="flex items-center gap-3.5 pr-4 rounded-lg studio-card overflow-hidden text-left cursor-pointer"
           >
-            <div className="w-13 h-13 bg-[var(--accent-soft)] flex items-center justify-center shrink-0">
-              <Disc3 className="w-5 h-5 text-[var(--accent)]" />
-            </div>
+            <MosaicCover
+              urls={catalogMosaic}
+              alt="Catalogue"
+              size="sm"
+              className="w-14 h-14"
+            />
             <span className="font-display font-semibold text-sm text-[var(--text-main)] truncate">
               Catalogue
             </span>
@@ -219,7 +252,7 @@ export const HomeView = memo(function HomeView({
               onClick={onCreatePlaylist}
               className="flex items-center gap-3.5 pr-4 rounded-lg studio-card overflow-hidden text-left cursor-pointer"
             >
-              <div className="w-13 h-13 bg-[var(--accent-soft)] flex items-center justify-center shrink-0">
+              <div className="w-14 h-14 bg-[var(--accent-soft)] flex items-center justify-center shrink-0">
                 <Plus className="w-5 h-5 text-[var(--accent)]" />
               </div>
               <span className="font-display font-semibold text-sm text-[var(--text-main)] truncate">
@@ -232,11 +265,11 @@ export const HomeView = memo(function HomeView({
               onClick={() => onOpenPlaylist(playlists[0].id)}
               className="flex items-center gap-3.5 pr-4 rounded-lg studio-card overflow-hidden text-left cursor-pointer"
             >
-              <AlbumCover
-                src={playlists[0].coverUrl || ''}
+              <MosaicCover
+                urls={getPlaylistCoverUrls(playlists[0])}
                 alt={playlists[0].name}
-                sizeClass="w-13 h-13"
-                roundedClass="rounded-none"
+                size="sm"
+                className="w-14 h-14"
               />
               <span className="font-display font-semibold text-sm text-[var(--text-main)] truncate">
                 {playlists[0].name}
@@ -251,15 +284,15 @@ export const HomeView = memo(function HomeView({
             <h2 className="font-display font-bold text-lg text-[var(--text-main)]">
               Écoutés récemment
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5">
               {recentTracks
-                .slice(0, 5)
+                .slice(0, 4)
                 .map((t) => renderTrackCard(t, recentTracks))}
             </div>
           </section>
         )}
 
-        {/* Ambiances */}
+        {/* Ambiances with real 2x2 Mosaic Posters */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-display font-bold text-lg text-[var(--text-main)]">
@@ -274,24 +307,32 @@ export const HomeView = memo(function HomeView({
             </button>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-            {CATALOG_MOODS.slice(0, 5).map((mood) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            {moodCards.map((mood) => (
               <div
                 key={mood.bit}
-                className="group p-3.5 rounded-xl studio-card flex items-center justify-between gap-2"
+                className="group p-2.5 rounded-xl studio-card flex items-center gap-3"
               >
                 <button
                   type="button"
                   onClick={() => onOpenAllTracks('all', mood.bit)}
-                  className="text-left font-medium text-sm text-[var(--text-main)] truncate flex-1 cursor-pointer"
+                  className="flex items-center gap-3 min-w-0 flex-1 text-left cursor-pointer"
                 >
-                  {mood.name}
+                  <MosaicCover
+                    urls={mood.covers}
+                    alt={mood.name}
+                    size="sm"
+                    className="w-12 h-12 rounded-lg"
+                  />
+                  <span className="font-semibold text-sm text-[var(--text-main)] truncate">
+                    {mood.name}
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => onPlaySmartMix('all', mood.bit)}
                   aria-label={`Lancer ${mood.name}`}
-                  className="w-7.5 h-7.5 rounded-full bg-[var(--bg-panel)] hover:bg-[var(--accent)] text-[var(--text-main)] hover:text-white border border-[var(--border-subtle)] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-[var(--bg-panel)] hover:bg-[var(--accent)] text-[var(--text-main)] hover:text-white border border-[var(--border-subtle)] flex items-center justify-center shrink-0 transition-colors cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                 </button>
@@ -300,7 +341,7 @@ export const HomeView = memo(function HomeView({
           </div>
         </section>
 
-        {/* Genres */}
+        {/* Genres with real tilted cover posters */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="font-display font-bold text-lg text-[var(--text-main)]">
@@ -315,21 +356,31 @@ export const HomeView = memo(function HomeView({
             </button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {CATALOG_GENRES.map((g) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+            {genreCards.map((g) => (
               <button
                 key={g.name}
                 type="button"
                 onClick={() => onOpenAllTracks(g.name)}
-                className="px-3.5 py-2 rounded-lg studio-card text-xs sm:text-sm font-medium text-[var(--text-main)] cursor-pointer"
+                className="group relative h-[76px] p-3.5 rounded-xl studio-card overflow-hidden text-left cursor-pointer"
               >
-                {g.name}
+                <span className="relative z-10 block max-w-[68%] font-display font-bold text-sm text-[var(--text-main)] leading-snug">
+                  {g.name}
+                </span>
+                {g.covers[0] && (
+                  <AlbumCover
+                    src={g.covers[0]}
+                    alt={g.name}
+                    size="sm"
+                    className="w-16 h-16 rounded-lg shadow-md absolute -right-2 -bottom-2 rotate-[16deg] transition-transform duration-200 group-hover:scale-105 group-hover:rotate-[12deg]"
+                  />
+                )}
               </button>
             ))}
           </div>
         </section>
 
-        {/* Music Shelves */}
+        {/* Video / Music Shelves with 16:9 YouTube Miniatures ("minia") */}
         {shelves.map(
           (shelf) =>
             shelf.tracks.length > 0 && (
@@ -347,7 +398,7 @@ export const HomeView = memo(function HomeView({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3.5">
                   {shelf.tracks.map((t) => renderTrackCard(t, shelf.tracks))}
                 </div>
               </section>

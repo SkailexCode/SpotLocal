@@ -197,4 +197,15 @@ test('332k+ embedded catalog integrity, clean first-visit state, and instant Cat
   );
   assert.ok(res.totalMatches >= 1);
   assert.equal(res.tracks[0]?.sourceKind, 'youtube');
+  assert.ok(res.tracks[0]?.coverUrl.includes('/mqdefault.jpg'));
+
+  // Verify real artwork & mosaic cover helpers
+  const stromaeCover = catalogStore.getArtistCoverUrl('Stromae');
+  assert.ok(stromaeCover && stromaeCover.startsWith('https://i.ytimg.com/vi/'));
+  assert.equal(catalogStore.getCatalogSampleCovers(4).length, 4);
+  assert.equal(catalogStore.getGenreSampleCovers('Pop', 4).length, 4);
+  assert.equal(catalogStore.getMoodSampleCovers(1, 4).length, 4);
+
+  const artistsRes = catalogStore.queryArtists('Stromae', 5);
+  assert.ok(artistsRes.items[0]?.coverUrl?.startsWith('https://i.ytimg.com/vi/'));
 });

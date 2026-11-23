@@ -273,6 +273,7 @@ class CatalogStore {
   private artistNames: string[] = [];
   private normArtists: string[] = [];
   private artistCounts: number[] = [];
+  private artistCoverVideoIds: string[] = [];
   private artistNameMap = new Map<string, number>();
 
   private artistIdxCol = new Uint32Array(MAX_CAPACITY);
@@ -301,6 +302,7 @@ class CatalogStore {
       this.artistNames.push(clean);
       this.normArtists.push(foldSearchText(clean));
       this.artistCounts.push(0);
+      this.artistCoverVideoIds.push('');
     }
     return idx;
   }
@@ -330,6 +332,9 @@ class CatalogStore {
       this.moodMaskCol[idx] = mMask;
 
       this.idToIndex.set(id, idx);
+      if (!this.artistCoverVideoIds[aIdx]) {
+        this.artistCoverVideoIds[aIdx] = primary;
+      }
       this.artistCounts[aIdx]++;
       this.genreCounts[gIdx]++;
       this.totalDurationSec += dur;
@@ -369,6 +374,9 @@ class CatalogStore {
       this.moodMaskCol[idx] = mMask;
 
       this.idToIndex.set(id, idx);
+      if (!this.artistCoverVideoIds[aIdx]) {
+        this.artistCoverVideoIds[aIdx] = videoId;
+      }
       this.artistCounts[aIdx]++;
       this.genreCounts[gIdx]++;
       this.totalDurationSec += dur;
@@ -488,7 +496,7 @@ class CatalogStore {
       addedAt: 'Catalogue YouTube',
       durationSec: dur,
       durationLabel: formatTime(dur),
-      coverUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      coverUrl: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
       previewUrl: '',
       explicit: false,
       liked: overlay.likedIds.has(id),
@@ -595,18 +603,87 @@ class CatalogStore {
     return out;
   }
 
+  public getArtistCoverUrl(artistName: string): string | undefined {
+    const clean = artistName.trim();
+    if (!clean) return undefined;
+    const exactIdx = this.artistNameMap.get(clean);
+    if (exactIdx !== undefined && this.artistCoverVideoIds[exactIdx]) {
+      return `https://i.ytimg.com/vi/${this.artistCoverVideoIds[exactIdx]}/mqdefault.jpg`;
+    }
+    const target = foldSearchText(clean);
+    for (let i = 0; i < this.normArtists.length; i++) {
+      if (this.normArtists[i] === target && this.artistCoverVideoIds[i]) {
+        return `https://i.ytimg.com/vi/${this.artistCoverVideoIds[i]}/mqdefault.jpg`;
+      }
+    }
+    return undefined;
+  }
+
+  public getCatalogSampleCovers(count = 4): string[] {
+    const out: string[] = [];
+    const usedArtists = new Set<number>();
+    const usedGenres = new Set<number>();
+    for (let i = 0; i < this.count && out.length < count; i++) {
+      const g = this.genreIdxCol[i];
+      const a = this.artistIdxCol[i];
+      if (usedArtists.has(a) || usedGenres.has(g)) continue;
+      usedArtists.add(a);
+      usedGenres.add(g);
+      out.push(`https://i.ytimg.com/vi/${this.videoIds[i]}/mqdefault.jpg`);
+    }
+    return out;
+  }
+
+  public getGenreSampleCovers(genreName: string, count = 4): string[] {
+    const gIdx = GENRE_NAME_TO_IDX.get(genreName);
+    if (gIdx === undefined) return this.getCatalogSampleCovers(count);
+    const out: string[] = [];
+    const usedArtists = new Set<number>();
+    for (let i = 0; i < this.count && out.length < count; i++) {
+      if (this.genreIdxCol[i] !== gIdx) continue;
+      const a = this.artistIdxCol[i];
+      if (usedArtists.has(a)) continue;
+      usedArtists.add(a);
+      out.push(`https://i.ytimg.com/vi/${this.videoIds[i]}/mqdefault.jpg`);
+    }
+    return out;
+  }
+
+  public getMoodSampleCovers(moodBit: number, count = 4): string[] {
+    const out: string[] = [];
+    const usedArtists = new Set<number>();
+    for (let i = 0; i < this.count && out.length < count; i++) {
+      if ((this.moodMaskCol[i] & moodBit) === 0) continue;
+      const a = this.artistIdxCol[i];
+      if (usedArtists.has(a)) continue;
+      usedArtists.add(a);
+      out.push(`https://i.ytimg.com/vi/${this.videoIds[i]}/mqdefault.jpg`);
+    }
+    return out;
+  }
+
   public queryArtists(
     query: string,
     limit = 80
-  ): { totalArtists: number; items: Array<{ name: string; count: number }> } {
+  ): {
+    totalArtists: number;
+    items: Array<{ name: string; count: number; coverUrl?: string }>;
+  } {
     const q = foldSearchText(query);
-    const matches: Array<{ name: string; count: number }> = [];
+    const matches: Array<{ name: string; count: number; coverUrl?: string }> = [];
 
     for (let i = 0; i < this.artistNames.length; i++) {
       const cnt = this.artistCounts[i];
       if (cnt === 0) continue;
       if (!q || this.normArtists[i].includes(q)) {
-        matches.push({ name: this.artistNames[i], count: cnt });
+        const vid = this.artistCoverVideoIds[i];
+        matches.push({
+          name: this.artistNames[i],
+          count: cnt,
+          coverUrl: vid
+            ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`
+            : undefined,
+        });
       }
     }
 
