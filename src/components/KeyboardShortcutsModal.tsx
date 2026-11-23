@@ -15,22 +15,27 @@ const SHORTCUTS = [
   { keys: ['?'], label: 'Afficher ce guide des raccourcis' },
 ];
 
-export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps) {
+export function KeyboardShortcutsModal({
+  onClose,
+}: KeyboardShortcutsModalProps) {
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="shortcuts-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-2xl bg-[#181818] border border-white/10 shadow-2xl overflow-hidden text-white">
-        <div className="flex items-center justify-between px-6 py-4 bg-[#121212] border-b border-white/[0.08]">
+      <div className="w-full max-w-md rounded-2xl bg-[var(--bg-panel-solid)] border border-[var(--border-strong)] shadow-2xl overflow-hidden text-[var(--text-main)] anim-modal">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-2.5">
-            <Keyboard className="w-5 h-5 text-[#1ED760]" />
-            <h2 id="shortcuts-modal-title" className="font-display font-bold text-base">
+            <Keyboard className="w-5 h-5 text-[var(--accent)]" />
+            <h2
+              id="shortcuts-modal-title"
+              className="font-display font-bold text-base"
+            >
               Raccourcis clavier Web
             </h2>
           </div>
@@ -38,24 +43,26 @@ export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps)
             type="button"
             onClick={onClose}
             aria-label="Fermer"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-sub)] hover:text-[var(--text-main)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-5 space-y-2.5">
+        <div className="p-5 space-y-2">
           {SHORTCUTS.map((item) => (
             <div
               key={item.label}
-              className="flex items-center justify-between gap-4 py-1.5 px-2.5 rounded-lg bg-[#121212] border border-white/[0.05]"
+              className="flex items-center justify-between gap-4 py-2 px-3 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)]"
             >
-              <span className="text-xs text-[#d4d4d4]">{item.label}</span>
+              <span className="text-xs text-[var(--text-sub)]">
+                {item.label}
+              </span>
               <div className="flex items-center gap-1 shrink-0">
                 {item.keys.map((k) => (
                   <kbd
                     key={k}
-                    className="px-2 py-0.5 rounded bg-[#262626] border border-white/15 font-mono-tabular text-[11px] font-semibold text-white"
+                    className="px-2 py-0.5 rounded bg-[var(--bg-panel-solid)] border border-[var(--border-strong)] font-mono-tabular text-[11px] font-bold text-[var(--text-main)]"
                   >
                     {k}
                   </kbd>
@@ -65,11 +72,11 @@ export function KeyboardShortcutsModal({ onClose }: KeyboardShortcutsModalProps)
           ))}
         </div>
 
-        <div className="px-6 py-3.5 bg-[#121212] border-t border-white/[0.08] flex justify-end">
+        <div className="px-6 py-3.5 border-t border-[var(--border-subtle)] flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-1.5 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors cursor-pointer"
+            className="px-5 py-1.5 rounded-full btn-accent text-xs font-bold cursor-pointer"
           >
             Fermer
           </button>

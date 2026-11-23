@@ -8,6 +8,7 @@ import {
   type UIEvent,
 } from 'react';
 import {
+  Check,
   Clock3,
   Disc3,
   HardDrive,
@@ -20,10 +21,8 @@ import {
   Plus,
   Search,
   Shuffle,
-  Sparkles,
   Trash2,
   Upload,
-  Youtube,
 } from 'lucide-react';
 import type { Playlist, SortKey, Track } from '../types/music';
 import {
@@ -38,8 +37,6 @@ import { AlbumCover } from './AlbumCover';
 interface TrackListViewProps {
   headerType: 'liked' | 'playlist' | 'all' | 'artist';
   title: string;
-  subtitle?: string;
-  ownerName: string;
   coverUrl?: string;
   initialGenre?: string;
   initialMoodBit?: number;
@@ -85,15 +82,6 @@ interface TrackRowProps {
   onSelectArtist?: (artistName: string) => void;
 }
 
-function formatTotalSecondsLabel(totalSec: number): string {
-  const hours = Math.floor(totalSec / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  if (hours > 0) {
-    return `${hours.toLocaleString('fr-FR')} h ${mins} min`;
-  }
-  return `${mins} min`;
-}
-
 const TrackRow = memo(function TrackRow({
   track,
   index,
@@ -112,18 +100,14 @@ const TrackRow = memo(function TrackRow({
   onSelectArtist,
 }: TrackRowProps) {
   const hasLocal = Boolean(track.localFileKey || track.localServerUrl);
-  const hasYt = Boolean(track.youtubeVideoIds && track.youtubeVideoIds.length > 0);
 
   return (
     <div
       onDoubleClick={() => onPlay(track)}
-      className={`group grid grid-cols-[36px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1.7fr)_minmax(0,1fr)_136px] items-center gap-3 px-3 sm:px-4 h-14.5 rounded-xl transition-colors track-row-contain ${
-        isActive
-          ? 'bg-[#1ED760]/[0.09] border border-[#1ED760]/25'
-          : 'hover:bg-white/[0.05] border border-transparent'
+      className={`group grid grid-cols-[34px_minmax(0,1fr)_auto] md:grid-cols-[38px_minmax(0,1.7fr)_minmax(0,1fr)_116px_114px] items-center gap-3 px-3 sm:px-4 h-13.5 rounded-lg transition-colors track-row-contain ${
+        isActive ? 'bg-[var(--bg-row-active)]' : 'hover:bg-[var(--bg-row-hover)]'
       }`}
     >
-      {/* Index / Equalizer / Play Trigger */}
       <div className="flex items-center justify-center">
         <button
           type="button"
@@ -137,56 +121,54 @@ const TrackRow = memo(function TrackRow({
         >
           {isRowPlaying ? (
             <span className="flex items-end gap-0.5 h-3.5">
-              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-1" />
-              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-2" />
-              <span className="w-0.75 h-3.5 bg-[#1ED760] rounded-full animate-eq-3" />
+              <span className="w-0.75 h-3.5 bg-[var(--accent)] rounded-full animate-eq-1" />
+              <span className="w-0.75 h-3.5 bg-[var(--accent)] rounded-full animate-eq-2" />
+              <span className="w-0.75 h-3.5 bg-[var(--accent)] rounded-full animate-eq-3" />
             </span>
           ) : (
             <>
               <span
-                className={`text-xs font-mono-tabular group-hover:hidden ${
-                  isActive ? 'text-[#1ED760] font-bold' : 'text-[#7d8596]'
+                className={`text-sm font-mono-tabular group-hover:hidden ${
+                  isActive
+                    ? 'text-[var(--accent)] font-semibold'
+                    : 'text-[var(--text-sub)]'
                 }`}
               >
                 {index + 1}
               </span>
-              <Play className="w-4 h-4 text-white fill-white hidden group-hover:block" />
+              <Play className="w-4 h-4 text-[var(--text-main)] fill-current hidden group-hover:block" />
             </>
           )}
         </button>
       </div>
 
-      {/* Title + Artist + Source Badge */}
       <div className="flex items-center gap-3 min-w-0">
         <AlbumCover
           src={track.coverUrl}
           alt={track.title}
-          sizeClass="w-10.5 h-10.5"
-          roundedClass="rounded-lg"
+          sizeClass="w-10 h-10"
+          roundedClass="rounded-[5px]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
               onClick={() => onPlay(track)}
-              className={`text-[14.5px] font-semibold truncate text-left hover:underline cursor-pointer ${
-                isActive ? 'text-[#1ED760]' : 'text-white'
+              className={`text-sm font-medium truncate text-left hover:underline cursor-pointer ${
+                isActive
+                  ? 'text-[var(--accent)] font-semibold'
+                  : 'text-[var(--text-main)]'
               }`}
             >
               {track.title}
             </button>
 
-            {hasLocal ? (
-              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-[#1ED760]/18 text-[#1ED760] text-[10px] font-bold">
+            {hasLocal && (
+              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent)] text-[10px] font-semibold">
                 <HardDrive className="w-2.5 h-2.5" />
                 MP3
               </span>
-            ) : hasYt ? (
-              <span className="hidden sm:inline-flex shrink-0 items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-rose-500/14 text-rose-300 text-[10px] font-semibold">
-                <Youtube className="w-2.5 h-2.5 fill-current" />
-                YT
-              </span>
-            ) : null}
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
@@ -194,23 +176,27 @@ const TrackRow = memo(function TrackRow({
               <button
                 type="button"
                 onClick={() => onSelectArtist(track.artist)}
-                className="text-xs text-[#8b93a4] hover:text-white hover:underline truncate text-left cursor-pointer"
+                className="text-xs text-[var(--text-sub)] hover:text-[var(--text-main)] hover:underline truncate text-left cursor-pointer"
               >
                 {track.artist}
               </button>
             ) : (
-              <p className="text-xs text-[#8b93a4] truncate">{track.artist}</p>
+              <p className="text-xs text-[var(--text-sub)] truncate">
+                {track.artist}
+              </p>
             )}
           </div>
         </div>
       </div>
 
-      {/* Genre / Album */}
-      <p className="hidden md:block text-xs text-[#8b93a4] truncate">
-        {track.genre || track.album}
+      <p className="hidden md:block text-xs text-[var(--text-sub)] truncate">
+        {track.album || track.genre}
       </p>
 
-      {/* Like + Duration + Context Menu */}
+      <p className="hidden md:block text-xs text-[var(--text-sub)] truncate">
+        {track.addedAt || '—'}
+      </p>
+
       <div className="flex items-center justify-end gap-2.5 pr-1 relative">
         <button
           type="button"
@@ -218,18 +204,20 @@ const TrackRow = memo(function TrackRow({
           aria-label={
             track.liked ? 'Retirer des titres likés' : 'Ajouter aux titres likés'
           }
-          className={`transition-opacity cursor-pointer ${
+          className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
             track.liked
-              ? 'opacity-100 text-[#1ED760]'
-              : 'opacity-0 group-hover:opacity-100 text-[#8b93a4] hover:text-white'
+              ? 'bg-[var(--accent)] text-white opacity-100'
+              : 'border border-[var(--text-sub)] text-[var(--text-sub)] hover:border-[var(--text-main)] hover:text-[var(--text-main)] opacity-0 group-hover:opacity-100'
           }`}
         >
-          <Heart
-            className={`w-4 h-4 ${track.liked ? 'fill-[#1ED760]' : ''}`}
-          />
+          {track.liked ? (
+            <Check className="w-3 h-3 stroke-[3]" />
+          ) : (
+            <Plus className="w-3 h-3 stroke-[2.5]" />
+          )}
         </button>
 
-        <span className="text-xs text-[#8b93a4] font-mono-tabular w-10 text-right">
+        <span className="text-xs text-[var(--text-sub)] font-mono-tabular w-10 text-right">
           {track.durationLabel}
         </span>
 
@@ -241,7 +229,7 @@ const TrackRow = memo(function TrackRow({
               onToggleMenu(isMenuOpen ? null : track.id);
             }}
             aria-label="Plus d'actions"
-            className="w-7 h-7 rounded-lg hover:bg-white/10 flex items-center justify-center text-[#8b93a4] hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+            className="w-7 h-7 rounded-full hover:bg-[var(--bg-elevated)] flex items-center justify-center text-[var(--text-sub)] hover:text-[var(--text-main)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
           >
             <MoreHorizontal className="w-4 h-4" />
           </button>
@@ -249,7 +237,7 @@ const TrackRow = memo(function TrackRow({
           {isMenuOpen && (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="absolute right-0 top-8 z-30 w-60 py-1.5 rounded-xl bg-[#181c28] shadow-2xl border border-white/12 text-xs text-white"
+              className="absolute right-0 top-8 z-30 w-56 py-1.5 rounded-xl bg-[var(--bg-panel-solid)] shadow-xl border border-[var(--border-strong)] text-xs text-[var(--text-main)] anim-modal"
             >
               <button
                 type="button"
@@ -257,18 +245,15 @@ const TrackRow = memo(function TrackRow({
                   onAttachYouTubeLink(track);
                   onToggleMenu(null);
                 }}
-                className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-2 font-semibold text-[#1ED760] cursor-pointer"
+                className="w-full px-3.5 py-2 text-left hover:bg-[var(--bg-row-hover)] flex items-center gap-2 font-medium text-[var(--text-main)] cursor-pointer"
               >
-                <Link2 className="w-3.5 h-3.5" />
-                <span>Changer le lien YouTube…</span>
+                <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Modifier le lien YouTube</span>
               </button>
 
               {allPlaylists.length > 0 && (
                 <>
-                  <div className="my-1 border-t border-white/10" />
-                  <p className="px-3.5 py-1 text-[10.5px] uppercase tracking-wider text-[#7d8596] font-bold">
-                    Ajouter à une playlist
-                  </p>
+                  <div className="my-1 border-t border-[var(--border-subtle)]" />
                   {allPlaylists
                     .filter((pl) => pl.id !== currentPlaylistId)
                     .map((pl) => (
@@ -279,9 +264,9 @@ const TrackRow = memo(function TrackRow({
                           onAddTrackToPlaylist(track.id, pl.id);
                           onToggleMenu(null);
                         }}
-                        className="w-full px-3.5 py-2 text-left hover:bg-white/10 flex items-center gap-2 truncate cursor-pointer"
+                        className="w-full px-3.5 py-2 text-left hover:bg-[var(--bg-row-hover)] flex items-center gap-2 truncate cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5 text-[#9ca3b0] shrink-0" />
+                        <Plus className="w-3.5 h-3.5 text-[var(--text-sub)] shrink-0" />
                         <span className="truncate">{pl.name}</span>
                       </button>
                     ))}
@@ -290,17 +275,17 @@ const TrackRow = memo(function TrackRow({
 
               {headerType === 'playlist' && onRemoveTrackFromPlaylist && (
                 <>
-                  <div className="my-1 border-t border-white/10" />
+                  <div className="my-1 border-t border-[var(--border-subtle)]" />
                   <button
                     type="button"
                     onClick={() => {
                       onRemoveTrackFromPlaylist(track.id);
                       onToggleMenu(null);
                     }}
-                    className="w-full px-3.5 py-2 text-left hover:bg-white/10 text-rose-400 flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2 text-left hover:bg-[var(--bg-row-hover)] text-rose-500 flex items-center gap-2 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Retirer de cette playlist</span>
+                    <span>Retirer de la playlist</span>
                   </button>
                 </>
               )}
@@ -317,8 +302,6 @@ const PAGE_SIZE = 100;
 export const TrackListView = memo(function TrackListView({
   headerType,
   title,
-  subtitle,
-  ownerName,
   coverUrl,
   initialGenre,
   initialMoodBit,
@@ -345,30 +328,23 @@ export const TrackListView = memo(function TrackListView({
   onOpenImportModal,
   onExploreCatalog,
 }: TrackListViewProps) {
-  const [tableFilter, setTableFilter] = useState('');
+  const [inlineQuery, setInlineQuery] = useState('');
+  const [sortBy, setSortBy] = useState<SortKey>('default');
   const [selectedGenre, setSelectedGenre] = useState<string>(
     initialGenre || 'all'
   );
   const [selectedMoodBit, setSelectedMoodBit] = useState<number>(
     initialMoodBit || 0
   );
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'youtube'>(
-    'all'
-  );
-  const [sortField, setSortField] = useState<SortKey>('default');
-  const [sortAsc, setSortAsc] = useState(true);
   const [openMenuTrackId, setOpenMenuTrackId] = useState<string | null>(null);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    setSelectedGenre(initialGenre || 'all');
-    setVisibleCount(PAGE_SIZE);
+    if (initialGenre !== undefined) setSelectedGenre(initialGenre);
   }, [initialGenre]);
 
   useEffect(() => {
-    setSelectedMoodBit(initialMoodBit || 0);
-    setVisibleCount(PAGE_SIZE);
+    if (initialMoodBit !== undefined) setSelectedMoodBit(initialMoodBit);
   }, [initialMoodBit]);
 
   const queryOutcome = useMemo(() => {
@@ -376,59 +352,46 @@ export const TrackListView = memo(function TrackListView({
     if (useCatalogEngine) {
       return catalogStore.queryCatalog(
         {
-          query: tableFilter,
-          genre: selectedGenre,
-          moodBit: selectedMoodBit,
+          query: inlineQuery,
+          genre: headerType === 'artist' ? 'all' : selectedGenre,
+          moodBit: headerType === 'artist' ? 0 : selectedMoodBit,
           artist: artistFilter,
-          sourceFilter,
-          sortField,
-          sortAsc,
-          limit: visibleCount,
+          sortField: sortBy,
+          limit: visibleLimit,
         },
         overlay
       );
     }
 
-    let filtered = filterTracks(tracks, tableFilter, selectedGenre);
-    if (selectedMoodBit !== 0) {
-      filtered = filtered.filter(
-        (t) => ((t.moodMask || 0) & selectedMoodBit) !== 0
-      );
-    }
-    if (sourceFilter === 'local') {
-      filtered = filtered.filter((t) =>
-        Boolean(t.localFileKey || t.localServerUrl)
-      );
-    } else if (sourceFilter === 'youtube') {
-      filtered = filtered.filter((t) =>
-        Boolean(t.youtubeVideoIds && t.youtubeVideoIds.length > 0)
-      );
-    }
-    const sorted = sortTracks(filtered, sortField, sortAsc ? 'asc' : 'desc');
-    const totalDur = sorted.reduce((acc, t) => acc + t.durationSec, 0);
+    const byGenre =
+      selectedGenre === 'all'
+        ? tracks
+        : tracks.filter((t) => t.genre === selectedGenre);
+    const filtered = filterTracks(byGenre, inlineQuery);
+    const sorted = sortTracks(filtered, sortBy);
     return {
       totalMatches: sorted.length,
-      totalDurationSec: totalDur,
-      tracks: sorted.slice(0, visibleCount),
+      tracks: sorted.slice(0, visibleLimit),
     };
   }, [
     useCatalogEngine,
     catalogVersion,
-    overlay,
-    tracks,
-    tableFilter,
+    inlineQuery,
     selectedGenre,
     selectedMoodBit,
     artistFilter,
-    sourceFilter,
-    sortField,
-    sortAsc,
-    visibleCount,
+    sortBy,
+    visibleLimit,
+    overlay,
+    tracks,
+    headerType,
   ]);
 
   const visibleTracks = queryOutcome.tracks;
-  const visibleTracksRef = useRef<Track[]>(visibleTracks);
-  visibleTracksRef.current = visibleTracks;
+  const visibleTracksRef = useRef(visibleTracks);
+  useEffect(() => {
+    visibleTracksRef.current = visibleTracks;
+  }, [visibleTracks]);
 
   const handleRowPlay = useCallback(
     (track: Track) => {
@@ -437,177 +400,118 @@ export const TrackListView = memo(function TrackListView({
     [onPlayTrackInContext]
   );
 
-  const handleContainerScroll = useCallback(
+  const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
       if (visibleTracks.length >= queryOutcome.totalMatches) return;
       const el = e.currentTarget;
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 420) {
-        setVisibleCount((prev) => prev + PAGE_SIZE);
+        setVisibleLimit((prev) =>
+          Math.min(queryOutcome.totalMatches, prev + PAGE_SIZE)
+        );
       }
     },
     [visibleTracks.length, queryOutcome.totalMatches]
   );
 
-  const handleSortClick = (field: SortKey) => {
-    setVisibleCount(PAGE_SIZE);
-    if (sortField === field) {
-      setSortAsc((prev) => !prev);
-    } else {
-      setSortField(field);
-      setSortAsc(true);
-    }
-  };
-
-  const bannerGradient =
-    headerType === 'liked'
-      ? 'from-indigo-600/30 via-[#121626] to-transparent'
-      : headerType === 'all'
-        ? 'from-emerald-600/25 via-[#101822] to-transparent'
-        : headerType === 'artist'
-          ? 'from-cyan-600/25 via-[#111824] to-transparent'
-          : 'from-purple-600/25 via-[#141424] to-transparent';
+  const isCollectionPlaying =
+    isPlaying &&
+    Boolean(currentTrackId) &&
+    visibleTracks.some((t) => t.id === currentTrackId);
 
   return (
     <div
-      ref={scrollContainerRef}
-      onScroll={handleContainerScroll}
       onClick={() => openMenuTrackId && setOpenMenuTrackId(null)}
-      className="flex-1 flex flex-col min-h-0 studio-panel rounded-2xl overflow-y-auto select-none relative"
+      onScroll={handleScroll}
+      className="flex-1 flex flex-col min-h-0 studio-panel rounded-xl overflow-y-auto relative anim-view"
     >
-      {/* Hero Banner */}
-      <div
-        className={`bg-gradient-to-b ${bannerGradient} px-5 sm:px-7 pt-6 pb-6 flex flex-col sm:flex-row sm:items-end gap-5`}
-      >
-        {headerType === 'liked' ? (
-          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl shadow-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-emerald-300 flex items-center justify-center shrink-0">
-            <Heart className="w-14 h-14 text-white fill-white drop-shadow-md" />
-          </div>
-        ) : headerType === 'all' ? (
-          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl shadow-2xl bg-gradient-to-br from-[#1ED760] via-[#129642] to-[#0a2916] flex items-center justify-center shrink-0">
-            <Disc3 className="w-14 h-14 text-black drop-shadow-md" />
-          </div>
-        ) : headerType === 'artist' ? (
-          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full shadow-2xl bg-gradient-to-br from-cyan-500/40 to-[#151a28] border border-white/15 flex items-center justify-center shrink-0 overflow-hidden">
-            {coverUrl ? (
-              <AlbumCover
-                src={coverUrl}
-                alt={title}
-                sizeClass="w-full h-full"
-                roundedClass="rounded-full"
-              />
-            ) : (
-              <Mic2 className="w-14 h-14 text-white" />
-            )}
-          </div>
-        ) : (
-          <AlbumCover
-            src={coverUrl || ''}
-            alt={title}
-            sizeClass="w-28 h-28 sm:w-36 sm:h-36"
-            roundedClass="rounded-2xl shadow-2xl"
-          />
-        )}
-
-        <div className="min-w-0 flex-1 space-y-2">
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white/[0.07] border border-white/[0.09] text-[11px] font-semibold text-[#c8cdd6]">
-            {headerType === 'all'
-              ? 'Catalogue Intégral YouTube'
-              : headerType === 'artist'
-                ? 'Discographie Artiste'
-                : headerType === 'liked'
-                  ? 'Favoris Personnels'
-                  : 'Playlist Personnelle'}
-          </span>
-
-          <h1 className="font-display font-extrabold text-2xl sm:text-4xl lg:text-5xl tracking-tight text-white truncate pb-0.5">
-            {title}
-          </h1>
-
-          {subtitle && (
-            <p className="text-xs sm:text-sm text-[#9ca3b0] line-clamp-2">
-              {subtitle}
-            </p>
+      {/* Clean Flat Header */}
+      <div className="px-5 sm:px-7 pt-6 pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-5">
+          {headerType === 'liked' ? (
+            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg bg-[#d96b34] flex items-center justify-center shrink-0">
+              <Heart className="w-14 h-14 sm:w-18 sm:h-18 text-white fill-white" />
+            </div>
+          ) : headerType === 'all' ? (
+            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+              <Disc3 className="w-14 h-14 sm:w-18 sm:h-18 text-[var(--accent)]" />
+            </div>
+          ) : headerType === 'artist' ? (
+            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
+              <Mic2 className="w-14 h-14 sm:w-18 sm:h-18 text-[var(--accent)]" />
+            </div>
+          ) : (
+            <AlbumCover
+              src={coverUrl || visibleTracks[0]?.coverUrl}
+              alt={title}
+              sizeClass="w-32 h-32 sm:w-40 sm:h-40"
+              roundedClass="rounded-lg"
+            />
           )}
 
-          <div className="flex flex-wrap items-center gap-1.5 text-xs sm:text-sm text-[#c8cdd6] pt-0.5">
-            <span className="font-bold text-white">{ownerName}</span>
-            <span className="text-[#6e7787]">•</span>
-            <span className="text-[#1ED760] font-mono-tabular font-bold">
-              {queryOutcome.totalMatches.toLocaleString('fr-FR')}{' '}
-              {queryOutcome.totalMatches > 1 ? 'titres' : 'titre'}
-            </span>
-            {queryOutcome.totalMatches > 0 && (
-              <>
-                <span className="text-[#6e7787]">•</span>
-                <span className="text-[#8b93a4] font-mono-tabular">
-                  {formatTotalSecondsLabel(queryOutcome.totalDurationSec)}
-                </span>
-              </>
-            )}
+          <div className="min-w-0 flex-1 space-y-1 pb-1">
+            <p className="text-xs font-medium text-[var(--text-sub)]">
+              {headerType === 'artist'
+                ? 'Artiste'
+                : headerType === 'all'
+                  ? 'Catalogue'
+                  : 'Playlist'}
+            </p>
+            <h1 className="font-display font-extrabold text-3xl sm:text-5xl text-[var(--text-main)] tracking-tight leading-none truncate">
+              {title}
+            </h1>
           </div>
         </div>
       </div>
 
-      {/* Action Bar + Genre/Mood Filter Strip */}
-      <div className="px-4 sm:px-7 pb-6 flex-1 space-y-4">
+      {/* Action & Filter Bar */}
+      <div className="px-5 sm:px-7 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={visibleTracks.length === 0}
+              disabled={queryOutcome.totalMatches === 0}
               onClick={() => onPlayAll(visibleTracks)}
-              aria-label="Lire la sélection"
-              className="w-12 h-12 rounded-full bg-[#1ED760] hover:bg-[#22e668] disabled:opacity-40 hover:scale-105 active:scale-95 transition-all flex items-center justify-center shadow-[0_6px_22px_rgba(30,215,96,0.35)] text-black cursor-pointer"
+              aria-label={
+                isCollectionPlaying ? 'Mettre en pause' : 'Lire la sélection'
+              }
+              className="w-12.5 h-12.5 rounded-full btn-accent disabled:opacity-40 flex items-center justify-center cursor-pointer"
             >
-              {isPlaying &&
-              visibleTracks.some((t) => t.id === currentTrackId) ? (
-                <Pause className="w-5 h-5 fill-black" />
+              {isCollectionPlaying ? (
+                <Pause className="w-5.5 h-5.5 fill-current" />
               ) : (
-                <Play className="w-5 h-5 fill-black ml-0.5" />
+                <Play className="w-5.5 h-5.5 fill-current ml-0.5" />
               )}
             </button>
-
-            {onPlayRandomMix && headerType === 'all' && (
-              <button
-                type="button"
-                onClick={() =>
-                  onPlayRandomMix(selectedGenre, selectedMoodBit || undefined)
-                }
-                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-[#1ED760]/12 hover:bg-[#1ED760]/22 border border-[#1ED760]/30 text-[#1ED760] text-xs font-bold transition-colors cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Mix aléatoire du filtre</span>
-              </button>
-            )}
 
             <button
               type="button"
               onClick={onToggleShuffle}
-              aria-label="Mode aléatoire"
-              title="Lecture aléatoire (S)"
-              className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors cursor-pointer ${
+              aria-label="Lecture aléatoire"
+              title="Lecture aléatoire"
+              className={`w-9.5 h-9.5 rounded-full flex items-center justify-center transition-colors anim-press cursor-pointer ${
                 isShuffle
-                  ? 'bg-[#1ED760]/15 border-[#1ED760]/35 text-[#1ED760]'
-                  : 'bg-white/[0.04] border-white/[0.08] text-[#9ca3b0] hover:text-white'
+                  ? 'text-[var(--accent)] bg-[var(--accent-soft)]'
+                  : 'text-[var(--text-sub)] hover:text-[var(--text-main)] hover:bg-[var(--bg-elevated)]'
               }`}
             >
-              <Shuffle className="w-4 h-4" />
+              <Shuffle className="w-4.5 h-4.5" />
             </button>
 
-            <button
-              type="button"
-              onClick={onOpenImportModal}
-              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/[0.05] hover:bg-white/[0.11] border border-white/[0.08] text-xs font-semibold text-white transition-colors cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5 text-[#1ED760]" />
-              <span>Importer MP3</span>
-            </button>
+            {onPlayRandomMix && queryOutcome.totalMatches > 10 && (
+              <button
+                type="button"
+                onClick={() => onPlayRandomMix(selectedGenre, selectedMoodBit)}
+                className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-main)] anim-press cursor-pointer"
+              >
+                <span>Aléatoire</span>
+              </button>
+            )}
 
             {headerType === 'playlist' && onDeletePlaylist && (
               <button
                 type="button"
                 onClick={onDeletePlaylist}
-                className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-rose-500/12 hover:bg-rose-500/22 border border-rose-500/25 text-xs font-semibold text-rose-300 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-xs font-medium transition-colors cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Supprimer</span>
@@ -615,63 +519,54 @@ export const TrackListView = memo(function TrackListView({
             )}
           </div>
 
-          {/* Search inside View + Source Toggle */}
-          <div className="flex flex-wrap items-center gap-2">
-            {headerType !== 'all' && (
-              <div className="inline-flex items-center rounded-xl bg-[#0a0c12] p-0.5 border border-white/[0.07] text-xs">
-                {(['all', 'local', 'youtube'] as const).map((src) => (
-                  <button
-                    key={src}
-                    type="button"
-                    onClick={() => {
-                      setSourceFilter(src);
-                      setVisibleCount(PAGE_SIZE);
-                    }}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-colors cursor-pointer ${
-                      sourceFilter === src
-                        ? 'bg-[#1c2130] text-white'
-                        : 'text-[#8b93a4] hover:text-white'
-                    }`}
-                  >
-                    {src === 'all' ? 'Tout' : src === 'local' ? 'MP3' : 'YouTube'}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-[#7d8596] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <div className="flex flex-wrap items-center gap-2 flex-1 sm:flex-initial justify-end">
+            <div className="relative flex-1 sm:w-52">
+              <Search className="w-4 h-4 text-[var(--text-sub)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
-                value={tableFilter}
+                value={inlineQuery}
                 onChange={(e) => {
-                  setTableFilter(e.target.value);
-                  setVisibleCount(PAGE_SIZE);
+                  setInlineQuery(e.target.value);
+                  setVisibleLimit(PAGE_SIZE);
                 }}
-                placeholder="Filtrer par titre ou artiste…"
-                className="h-9 pl-8.5 pr-3 rounded-xl bg-[#0d1018] hover:bg-[#131723] focus:bg-[#151a28] text-xs text-white placeholder-[#7d8596] outline-none w-52 sm:w-64 border border-white/[0.08] focus:border-[#1ED760]/60 transition-all"
+                placeholder="Filtrer dans la liste..."
+                className="w-full h-9 pl-9 pr-3 rounded-md bg-[var(--bg-input)] focus:bg-[var(--bg-input-focus)] text-xs text-[var(--text-main)] placeholder-[var(--text-sub)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none transition-colors"
               />
             </div>
+
+            <select
+              aria-label="Trier les titres"
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value as SortKey);
+                setVisibleLimit(PAGE_SIZE);
+              }}
+              className="h-9 px-3 rounded-md bg-[var(--bg-input)] text-xs font-medium text-[var(--text-main)] border border-[var(--border-subtle)] outline-none cursor-pointer"
+            >
+              <option value="default">Ordre personnalisé</option>
+              <option value="title">Titre (A–Z)</option>
+              <option value="artist">Artiste (A–Z)</option>
+              <option value="duration">Durée</option>
+            </select>
           </div>
         </div>
 
-        {/* Genre & Mood Pills when browsing the 112k Catalog */}
         {headerType === 'all' && (
-          <div className="space-y-2">
+          <div className="space-y-2 pt-1">
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
               <button
                 type="button"
                 onClick={() => {
                   setSelectedGenre('all');
-                  setVisibleCount(PAGE_SIZE);
+                  setVisibleLimit(PAGE_SIZE);
                 }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                   selectedGenre === 'all'
-                    ? 'bg-white text-black'
-                    : 'bg-white/[0.05] text-[#9ca3b0] hover:text-white border border-white/[0.07]'
+                    ? 'bg-[var(--pill-active-bg)] text-[var(--pill-active-fg)]'
+                    : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] text-[var(--text-main)]'
                 }`}
               >
-                Tous les genres
+                Tous
               </button>
               {CATALOG_GENRES.map((g) => (
                 <button
@@ -679,12 +574,12 @@ export const TrackListView = memo(function TrackListView({
                   type="button"
                   onClick={() => {
                     setSelectedGenre(g.name);
-                    setVisibleCount(PAGE_SIZE);
+                    setVisibleLimit(PAGE_SIZE);
                   }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                     selectedGenre === g.name
-                      ? 'bg-[#1ED760] text-black font-bold'
-                      : 'bg-white/[0.05] text-[#9ca3b0] hover:text-white border border-white/[0.07]'
+                      ? 'bg-[var(--accent)] text-white font-semibold'
+                      : 'bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] text-[var(--text-main)]'
                   }`}
                 >
                   {g.name}
@@ -692,140 +587,111 @@ export const TrackListView = memo(function TrackListView({
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedMoodBit(0);
-                  setVisibleCount(PAGE_SIZE);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedMoodBit === 0
-                    ? 'bg-purple-500/25 text-purple-200 border border-purple-400/35'
-                    : 'bg-white/[0.03] text-[#7d8596] hover:text-white border border-white/[0.05]'
-                }`}
-              >
-                Toutes ambiances
-              </button>
-              {CATALOG_MOODS.map((m) => (
+            {selectedMoodBit !== 0 && (
+              <div className="flex items-center gap-2 text-xs text-[var(--accent)] font-medium">
+                <span>
+                  {CATALOG_MOODS.find((m) => m.bit === selectedMoodBit)?.name}
+                </span>
                 <button
-                  key={m.bit}
                   type="button"
-                  onClick={() => {
-                    setSelectedMoodBit(selectedMoodBit === m.bit ? 0 : m.bit);
-                    setVisibleCount(PAGE_SIZE);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                    selectedMoodBit === m.bit
-                      ? 'bg-purple-500 text-white font-bold'
-                      : 'bg-white/[0.03] text-[#8b93a4] hover:text-white border border-white/[0.05]'
-                  }`}
+                  onClick={() => setSelectedMoodBit(0)}
+                  className="underline hover:opacity-80 cursor-pointer"
                 >
-                  {m.shortLabel}
+                  Effacer
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
         )}
+      </div>
 
-        {/* Sticky Column Header */}
-        <div className="grid grid-cols-[36px_minmax(0,1fr)_auto] md:grid-cols-[40px_minmax(0,1.7fr)_minmax(0,1fr)_136px] items-center gap-3 px-3 sm:px-4 h-9 border-b border-white/[0.07] text-[11.5px] font-semibold uppercase tracking-wider text-[#7d8596] sticky top-0 bg-[#0d1017]/95 backdrop-blur-md z-10">
-          <span className="text-center">#</span>
-          <button
-            type="button"
-            onClick={() => handleSortClick('title')}
-            className="text-left hover:text-white transition-colors cursor-pointer"
-          >
-            Titre {sortField === 'title' ? (sortAsc ? '↑' : '↓') : ''}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSortClick('artist')}
-            className="hidden md:block text-left hover:text-white transition-colors cursor-pointer"
-          >
-            Genre / Artiste{' '}
-            {sortField === 'artist' ? (sortAsc ? '↑' : '↓') : ''}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSortClick('duration')}
-            aria-label="Trier par durée"
-            className="flex items-center justify-end pr-2 hover:text-white transition-colors cursor-pointer"
-          >
-            <Clock3 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Empty State or Track Rows */}
+      {/* Table */}
+      <div className="px-3 sm:px-5 pb-8 flex-1">
         {visibleTracks.length === 0 ? (
-          <div className="py-16 text-center space-y-3">
-            <p className="text-base font-bold text-white">
-              {headerType === 'liked' && tracks.length === 0
-                ? 'Vous n’avez encore aucun titre liké'
-                : headerType === 'playlist' && tracks.length === 0
-                  ? 'Cette playlist est vide pour le moment'
-                  : 'Aucun titre ne correspond à ces filtres'}
+          <div className="py-14 px-4 text-center space-y-3 max-w-sm mx-auto">
+            <p className="font-display font-semibold text-sm text-[var(--text-main)]">
+              {inlineQuery
+                ? `Aucun résultat pour « ${inlineQuery} ».`
+                : headerType === 'liked'
+                  ? 'Aucun titre liké pour le moment.'
+                  : 'Cette playlist est vide.'}
             </p>
-            <p className="text-sm text-[#8b93a4] max-w-md mx-auto">
-              {headerType === 'liked' && tracks.length === 0
-                ? 'Explorez le catalogue intégral et cliquez sur le cœur (♥) pour retrouver tous vos favoris ici.'
-                : 'Modifiez la recherche, changez d’ambiance ou collez directement un lien YouTube.'}
-            </p>
-            {onExploreCatalog && tracks.length === 0 && (
-              <div className="pt-1">
+            {!inlineQuery && (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {onExploreCatalog && (
+                  <button
+                    type="button"
+                    onClick={onExploreCatalog}
+                    className="inline-flex items-center gap-2 h-9 px-4 rounded-full btn-accent text-xs font-semibold cursor-pointer"
+                  >
+                    <span>Parcourir le catalogue</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={onExploreCatalog}
-                  className="inline-flex items-center gap-2 h-10 px-5 rounded-full bg-[#1ED760] hover:bg-[#22e668] text-black text-xs font-bold transition-colors cursor-pointer"
+                  onClick={onOpenImportModal}
+                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-[var(--text-main)] text-xs font-medium anim-press cursor-pointer"
                 >
-                  <Play className="w-3.5 h-3.5 fill-black" />
-                  <span>Explorer le catalogue intégral</span>
+                  <Upload className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>Importer des MP3</span>
                 </button>
               </div>
             )}
           </div>
         ) : (
-          <div className="space-y-0.5" data-testid="track-table-body">
-            {visibleTracks.map((track, idx) => {
-              const isActive = currentTrackId === track.id;
-              return (
-                <TrackRow
-                  key={track.id}
-                  track={track}
-                  index={idx}
-                  isActive={isActive}
-                  isRowPlaying={isActive && isPlaying}
-                  isMenuOpen={openMenuTrackId === track.id}
-                  headerType={headerType}
-                  currentPlaylistId={currentPlaylistId}
-                  allPlaylists={allPlaylists}
-                  onPlay={handleRowPlay}
-                  onToggleLike={onToggleLike}
-                  onToggleMenu={setOpenMenuTrackId}
-                  onAttachYouTubeLink={onAttachYouTubeLink}
-                  onAddTrackToPlaylist={onAddTrackToPlaylist}
-                  onRemoveTrackFromPlaylist={onRemoveTrackFromPlaylist}
-                  onSelectArtist={onSelectArtist}
-                />
-              );
-            })}
+          <>
+            <div className="grid grid-cols-[34px_minmax(0,1fr)_auto] md:grid-cols-[38px_minmax(0,1.7fr)_minmax(0,1fr)_116px_114px] items-center gap-3 px-3 sm:px-4 pb-2 mb-1 border-b border-[var(--border-subtle)] text-xs font-medium text-[var(--text-sub)]">
+              <span className="text-center">#</span>
+              <span>Titre</span>
+              <span className="hidden md:block">Album</span>
+              <span className="hidden md:block">Date d&apos;ajout</span>
+              <span className="flex justify-end pr-8">
+                <Clock3 className="w-3.5 h-3.5" />
+              </span>
+            </div>
 
-            {visibleTracks.length < queryOutcome.totalMatches && (
-              <div className="py-5 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
-                  className="px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.09] text-xs font-semibold text-white transition-colors cursor-pointer"
-                >
-                  Afficher {PAGE_SIZE} titres supplémentaires (
-                  {(
-                    queryOutcome.totalMatches - visibleTracks.length
-                  ).toLocaleString('fr-FR')}{' '}
-                  restants)
-                </button>
-              </div>
-            )}
-          </div>
+            <div className="space-y-0.5">
+              {visibleTracks.map((track, index) => {
+                const isActive = currentTrackId === track.id;
+                return (
+                  <TrackRow
+                    key={track.id}
+                    track={track}
+                    index={index}
+                    isActive={isActive}
+                    isRowPlaying={isActive && isPlaying}
+                    isMenuOpen={openMenuTrackId === track.id}
+                    headerType={headerType}
+                    currentPlaylistId={currentPlaylistId}
+                    allPlaylists={allPlaylists}
+                    onPlay={handleRowPlay}
+                    onToggleLike={onToggleLike}
+                    onToggleMenu={setOpenMenuTrackId}
+                    onAttachYouTubeLink={onAttachYouTubeLink}
+                    onAddTrackToPlaylist={onAddTrackToPlaylist}
+                    onRemoveTrackFromPlaylist={onRemoveTrackFromPlaylist}
+                    onSelectArtist={onSelectArtist}
+                  />
+                );
+              })}
+
+              {visibleTracks.length < queryOutcome.totalMatches && (
+                <div className="pt-4 pb-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleLimit((prev) =>
+                        Math.min(queryOutcome.totalMatches, prev + PAGE_SIZE * 2)
+                      )
+                    }
+                    className="px-5 py-2 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-main)] anim-press cursor-pointer"
+                  >
+                    Afficher plus
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

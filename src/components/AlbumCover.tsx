@@ -9,11 +9,11 @@ interface AlbumCoverProps {
 }
 
 const FALLBACK_GRADIENTS = [
-  'from-emerald-900 via-zinc-900 to-zinc-950',
-  'from-indigo-900 via-zinc-900 to-zinc-950',
-  'from-rose-900 via-zinc-900 to-zinc-950',
-  'from-amber-900 via-zinc-900 to-zinc-950',
-  'from-cyan-900 via-zinc-900 to-zinc-950',
+  'from-orange-700 via-amber-800 to-stone-900',
+  'from-amber-700 via-orange-900 to-stone-950',
+  'from-rose-800 via-orange-900 to-stone-900',
+  'from-yellow-700 via-amber-900 to-stone-900',
+  'from-orange-600 via-red-900 to-stone-950',
 ];
 
 function pickGradient(label: string): string {
@@ -50,7 +50,7 @@ export const AlbumCover = memo(function AlbumCover({
         className={`${sizeClass} ${roundedClass} bg-gradient-to-br ${pickGradient(alt)} flex items-center justify-center shrink-0 border border-white/10`}
         aria-label={alt}
       >
-        <Disc3 className="w-1/2 h-1/2 text-white/60" />
+        <Disc3 className="w-1/2 h-1/2 text-white/75" />
       </div>
     );
   }
@@ -63,7 +63,7 @@ export const AlbumCover = memo(function AlbumCover({
       loading="lazy"
       decoding="async"
       onError={() => setFailedSrc(resolvedSrc)}
-      className={`${sizeClass} ${roundedClass} object-cover shrink-0 bg-[#282828]`}
+      className={`${sizeClass} ${roundedClass} object-cover shrink-0 bg-[#2a211b]`}
     />
   );
 });

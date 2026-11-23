@@ -6,7 +6,10 @@ interface CreatePlaylistModalProps {
   onClose: () => void;
 }
 
-export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalProps) {
+export function CreatePlaylistModal({
+  onCreate,
+  onClose,
+}: CreatePlaylistModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
@@ -24,21 +27,24 @@ export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalPr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       role="dialog"
       aria-modal="true"
       aria-labelledby="create-playlist-title"
     >
-      <div className="w-full max-w-md rounded-xl bg-[#202020] border border-white/10 shadow-2xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.08]">
-          <h2 id="create-playlist-title" className="font-display font-bold text-base text-white">
+      <div className="w-full max-w-md rounded-2xl bg-[var(--bg-panel-solid)] border border-[var(--border-strong)] shadow-2xl overflow-hidden anim-modal">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-subtle)]">
+          <h2
+            id="create-playlist-title"
+            className="font-display font-bold text-base text-[var(--text-main)]"
+          >
             Créer une playlist
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fermer"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-[#b3b3b3] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--text-sub)] hover:text-[var(--text-main)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -46,7 +52,10 @@ export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalPr
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="playlist-name-input" className="block text-xs font-medium text-[#d4d4d4]">
+            <label
+              htmlFor="playlist-name-input"
+              className="block text-xs font-semibold text-[var(--text-sub)]"
+            >
               Nom de la playlist
             </label>
             <input
@@ -59,13 +68,16 @@ export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalPr
                 if (error) setError('');
               }}
               placeholder="Ex : Soirée Chill, Sport..."
-              className="w-full h-10 px-3 rounded-md bg-[#121212] text-sm text-white placeholder-[#7a7a7a] border border-white/15 focus:border-white/40 outline-none"
+              className="w-full h-10 px-3 rounded-lg bg-[var(--bg-input)] focus:bg-[var(--bg-input-focus)] text-sm text-[var(--text-main)] placeholder-[var(--text-muted)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none"
             />
-            {error && <p className="text-xs text-rose-400">{error}</p>}
+            {error && <p className="text-xs text-rose-500">{error}</p>}
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="playlist-desc-input" className="block text-xs font-medium text-[#d4d4d4]">
+            <label
+              htmlFor="playlist-desc-input"
+              className="block text-xs font-semibold text-[var(--text-sub)]"
+            >
               Description (optionnelle)
             </label>
             <textarea
@@ -74,7 +86,7 @@ export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalPr
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ajoutez une courte description..."
-              className="w-full p-3 rounded-md bg-[#121212] text-sm text-white placeholder-[#7a7a7a] border border-white/15 focus:border-white/40 outline-none resize-none"
+              className="w-full p-3 rounded-lg bg-[var(--bg-input)] focus:bg-[var(--bg-input-focus)] text-sm text-[var(--text-main)] placeholder-[var(--text-muted)] border border-[var(--border-subtle)] focus:border-[var(--accent)] outline-none resize-none"
             />
           </div>
 
@@ -82,13 +94,13 @@ export function CreatePlaylistModal({ onCreate, onClose }: CreatePlaylistModalPr
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-full text-xs font-semibold text-[#d4d4d4] hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-full text-xs font-semibold text-[var(--text-sub)] hover:text-[var(--text-main)] hover:bg-[var(--bg-elevated)] transition-colors cursor-pointer"
             >
               Annuler
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-full bg-[#1ED760] hover:bg-[#1fdf64] text-black text-xs font-bold transition-colors cursor-pointer"
+              className="px-5 py-2 rounded-full btn-accent text-xs font-bold cursor-pointer"
             >
               Créer
             </button>
