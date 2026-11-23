@@ -2,7 +2,6 @@ import { memo, type RefObject } from 'react';
 import {
   FolderInput,
   Home,
-  Link2,
   Menu,
   Moon,
   Search,
@@ -10,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import type { ActiveView } from '../types/music';
+import { SpotLocalLogo, YouTubeLogo } from './Logos';
 
 export type ThemeMode = 'warm' | 'dark';
 
@@ -59,14 +59,7 @@ export const TopBar = memo(function TopBar({
           aria-label="SpotLocal Accueil"
           className="flex items-center gap-2 cursor-pointer"
         >
-          <div className="w-8 h-8 rounded-full bg-[var(--accent)] flex items-center justify-center">
-            <svg viewBox="0 0 24 24" className="w-4.5 h-4.5 fill-white">
-              <rect x="4" y="10" width="2.8" height="7" rx="1.4" />
-              <rect x="9" y="6" width="2.8" height="13" rx="1.4" />
-              <rect x="14" y="8.5" width="2.8" height="10" rx="1.4" />
-              <rect x="19" y="11.5" width="2.4" height="5" rx="1.2" />
-            </svg>
-          </div>
+          <SpotLocalLogo className="w-8 h-8" />
           <span className="hidden sm:inline font-display font-bold text-base text-[var(--text-main)]">
             SpotLocal
           </span>
@@ -117,16 +110,17 @@ export const TopBar = memo(function TopBar({
         </div>
       </div>
 
-      {/* Right: Link YT + Importer MP3 + Theme Switch */}
+      {/* Right: YouTube Link + Importer MP3 + Theme Switch */}
       <div className="flex items-center gap-2 shrink-0">
         <button
           type="button"
           onClick={onOpenYouTubeModal}
           title="Ajouter un lien YouTube"
           aria-label="Ajouter un lien YouTube"
-          className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-full bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-panel)] text-[var(--text-sub)] hover:text-[var(--text-main)] anim-press cursor-pointer"
+          className="hidden sm:inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-[var(--bg-panel)] hover:bg-[var(--bg-elevated)] border border-[var(--border-panel)] text-xs font-semibold text-[var(--text-main)] anim-press cursor-pointer"
         >
-          <Link2 className="w-4 h-4" />
+          <YouTubeLogo className="w-4.5 h-3.5" />
+          <span className="hidden md:inline">YouTube</span>
         </button>
 
         <button

@@ -33,7 +33,7 @@ export const SEED_TRACKS: Track[] = (rawSeedTuples as SeedTuple[]).map(
       addedAt: 'Catalogue YouTube',
       durationSec,
       durationLabel: formatDurationLabel(durationSec),
-      coverUrl: `https://i.ytimg.com/vi/${primaryVid}/hqdefault.jpg`,
+      coverUrl: `https://i.ytimg.com/vi/${primaryVid}/mqdefault.jpg`,
       previewUrl: '',
       explicit: false,
       liked: false,

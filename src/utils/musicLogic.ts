@@ -392,10 +392,10 @@ export function parseYouTubeTitleAndChannel(
 }
 
 /**
- * Returns high-quality YouTube thumbnail URL for a video ID.
+ * Returns clean 16:9 zero-letterbox YouTube thumbnail URL for a video ID.
  */
 export function getYouTubeThumbnailUrl(videoId: string): string {
-  return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`;
+  return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
 }
 
 /**

@@ -1,18 +1,9 @@
 import { memo, useMemo, useState } from 'react';
-import {
-  Disc3,
-  Headphones,
-  Heart,
-  Library,
-  Mic2,
-  Plus,
-  Radio,
-  Search,
-  X,
-} from 'lucide-react';
+import { Headphones, Library, Plus, Search, X } from 'lucide-react';
 import type { ActiveView, Playlist } from '../types/music';
 import { catalogStore } from '../utils/catalogEngine';
-import { AlbumCover } from './AlbumCover';
+import { AlbumCover, getPlaylistCoverUrls, MosaicCover } from './AlbumCover';
+import { LikedTracksPoster } from './Logos';
 
 interface SidebarProps {
   activeView: ActiveView;
@@ -52,6 +43,16 @@ export const Sidebar = memo(function Sidebar({
   const [tab, setTab] = useState<'playlists' | 'artists'>('playlists');
   const [artistQuery, setArtistQuery] = useState('');
   const [artistLimit, setArtistLimit] = useState(ARTISTS_PAGE_SIZE);
+
+  const catalogCovers = useMemo(() => {
+    void catalogVersion;
+    return catalogStore.getCatalogSampleCovers(4);
+  }, [catalogVersion]);
+
+  const moodsCovers = useMemo(() => {
+    void catalogVersion;
+    return catalogStore.getMoodSampleCovers(1, 4);
+  }, [catalogVersion]);
 
   const artistResult = useMemo(() => {
     void catalogVersion;
@@ -136,9 +137,10 @@ export const Sidebar = memo(function Sidebar({
                   : 'hover:bg-[var(--bg-row-hover)]'
               }`}
             >
-              <div className="w-11 h-11 rounded-md bg-[#d96b34] flex items-center justify-center shrink-0">
-                <Heart className="w-5 h-5 text-white fill-white" />
-              </div>
+              <LikedTracksPoster
+                className="w-11 h-11 rounded-md"
+                iconClassName="w-5 h-5"
+              />
               <div className="min-w-0 flex-1">
                 <p
                   className={`text-sm font-semibold truncate ${
@@ -167,9 +169,12 @@ export const Sidebar = memo(function Sidebar({
                   : 'hover:bg-[var(--bg-row-hover)]'
               }`}
             >
-              <div className="w-11 h-11 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                <Disc3 className="w-5 h-5 text-[var(--accent)]" />
-              </div>
+              <MosaicCover
+                urls={catalogCovers}
+                alt="Catalogue"
+                size="sm"
+                className="w-11 h-11 rounded-md"
+              />
               <div className="min-w-0 flex-1">
                 <p
                   className={`text-sm font-semibold truncate ${
@@ -181,7 +186,7 @@ export const Sidebar = memo(function Sidebar({
                   Catalogue
                 </p>
                 <p className="text-xs text-[var(--text-sub)] truncate">
-                  Parcourir
+                  Collection
                 </p>
               </div>
             </button>
@@ -198,9 +203,12 @@ export const Sidebar = memo(function Sidebar({
                   : 'hover:bg-[var(--bg-row-hover)]'
               }`}
             >
-              <div className="w-11 h-11 rounded-md bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                <Radio className="w-5 h-5 text-[var(--accent)]" />
-              </div>
+              <MosaicCover
+                urls={moodsCovers}
+                alt="Ambiances"
+                size="sm"
+                className="w-11 h-11 rounded-md"
+              />
               <div className="min-w-0 flex-1">
                 <p
                   className={`text-sm font-semibold truncate ${
@@ -212,7 +220,7 @@ export const Sidebar = memo(function Sidebar({
                   Ambiances
                 </p>
                 <p className="text-xs text-[var(--text-sub)] truncate">
-                  Radios
+                  Mix & radios
                 </p>
               </div>
             </button>
@@ -220,6 +228,7 @@ export const Sidebar = memo(function Sidebar({
             {playlists.map((pl) => {
               const active =
                 activeView === 'playlist' && selectedPlaylistId === pl.id;
+              const coverUrls = getPlaylistCoverUrls(pl);
               return (
                 <button
                   key={pl.id}
@@ -234,11 +243,11 @@ export const Sidebar = memo(function Sidebar({
                       : 'hover:bg-[var(--bg-row-hover)]'
                   }`}
                 >
-                  <AlbumCover
-                    src={pl.coverUrl}
+                  <MosaicCover
+                    urls={coverUrls}
                     alt={pl.name}
-                    sizeClass="w-11 h-11"
-                    roundedClass="rounded-md"
+                    size="sm"
+                    className="w-11 h-11 rounded-md"
                   />
                   <div className="min-w-0 flex-1">
                     <p
@@ -292,9 +301,12 @@ export const Sidebar = memo(function Sidebar({
                         : 'hover:bg-[var(--bg-row-hover)]'
                     }`}
                   >
-                    <div className="w-9 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-                      <Mic2 className="w-4 h-4 text-[var(--text-sub)]" />
-                    </div>
+                    <AlbumCover
+                      src={item.coverUrl}
+                      alt={item.name}
+                      size="sm"
+                      className="w-9 h-9 rounded-full"
+                    />
                     <p
                       className={`text-sm font-medium truncate flex-1 ${
                         active

@@ -10,11 +10,7 @@ import {
 import {
   Check,
   Clock3,
-  Disc3,
   HardDrive,
-  Heart,
-  Link2,
-  Mic2,
   MoreHorizontal,
   Pause,
   Play,
@@ -32,7 +28,8 @@ import {
   type UserLibraryOverlay,
 } from '../utils/catalogEngine';
 import { filterTracks, sortTracks } from '../utils/musicLogic';
-import { AlbumCover } from './AlbumCover';
+import { AlbumCover, MosaicCover } from './AlbumCover';
+import { LikedTracksPoster, VideoClipBadge, YouTubeLogo } from './Logos';
 
 interface TrackListViewProps {
   headerType: 'liked' | 'playlist' | 'all' | 'artist';
@@ -145,9 +142,10 @@ const TrackRow = memo(function TrackRow({
       <div className="flex items-center gap-3 min-w-0">
         <AlbumCover
           src={track.coverUrl}
+          videoIds={track.youtubeVideoIds}
           alt={track.title}
-          sizeClass="w-10 h-10"
-          roundedClass="rounded-[5px]"
+          size="sm"
+          className="w-10 h-10 rounded-[5px]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 min-w-0">
@@ -172,6 +170,7 @@ const TrackRow = memo(function TrackRow({
           </div>
 
           <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
+            {Boolean(track.youtubeVideoIds?.length) && <VideoClipBadge />}
             {onSelectArtist ? (
               <button
                 type="button"
@@ -247,7 +246,7 @@ const TrackRow = memo(function TrackRow({
                 }}
                 className="w-full px-3.5 py-2 text-left hover:bg-[var(--bg-row-hover)] flex items-center gap-2 font-medium text-[var(--text-main)] cursor-pointer"
               >
-                <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <YouTubeLogo className="w-4 h-3 shrink-0" />
                 <span>Modifier le lien YouTube</span>
               </button>
 
@@ -428,23 +427,42 @@ export const TrackListView = memo(function TrackListView({
       <div className="px-5 sm:px-7 pt-6 pb-4">
         <div className="flex flex-col sm:flex-row sm:items-end gap-5">
           {headerType === 'liked' ? (
-            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg bg-[#d96b34] flex items-center justify-center shrink-0">
-              <Heart className="w-14 h-14 sm:w-18 sm:h-18 text-white fill-white" />
-            </div>
+            <LikedTracksPoster
+              className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg shadow-sm"
+              iconClassName="w-14 h-14 sm:w-18 sm:h-18"
+            />
           ) : headerType === 'all' ? (
-            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-              <Disc3 className="w-14 h-14 sm:w-18 sm:h-18 text-[var(--accent)]" />
-            </div>
-          ) : headerType === 'artist' ? (
-            <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center shrink-0">
-              <Mic2 className="w-14 h-14 sm:w-18 sm:h-18 text-[var(--accent)]" />
-            </div>
-          ) : (
-            <AlbumCover
-              src={coverUrl || visibleTracks[0]?.coverUrl}
+            <MosaicCover
+              urls={
+                visibleTracks.length > 0
+                  ? visibleTracks.slice(0, 8).map((t) => t.coverUrl)
+                  : catalogStore.getCatalogSampleCovers(4)
+              }
               alt={title}
-              sizeClass="w-32 h-32 sm:w-40 sm:h-40"
-              roundedClass="rounded-lg"
+              size="lg"
+              className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg shadow-sm"
+            />
+          ) : headerType === 'artist' ? (
+            <AlbumCover
+              src={
+                catalogStore.getArtistCoverUrl(title) ||
+                visibleTracks[0]?.coverUrl
+              }
+              videoIds={visibleTracks[0]?.youtubeVideoIds}
+              alt={title}
+              size="lg"
+              className="w-32 h-32 sm:w-40 sm:h-40 rounded-full shadow-sm"
+            />
+          ) : (
+            <MosaicCover
+              urls={
+                visibleTracks.length >= 4
+                  ? visibleTracks.slice(0, 8).map((t) => t.coverUrl)
+                  : [coverUrl || visibleTracks[0]?.coverUrl || '']
+              }
+              alt={title}
+              size="lg"
+              className="w-32 h-32 sm:w-40 sm:h-40 rounded-lg shadow-sm"
             />
           )}
 

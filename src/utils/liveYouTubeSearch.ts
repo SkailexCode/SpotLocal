@@ -48,7 +48,7 @@ function toTrack(item: LiveYouTubeTrackItem): Track {
     addedAt: 'En direct',
     durationSec: dur,
     durationLabel: formatTime(dur),
-    coverUrl: `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+    coverUrl: `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`,
     previewUrl: '',
     explicit: false,
     liked: false,
@@ -94,7 +94,7 @@ async function fetchPipedInstance(
         artist: (raw.uploaderName || 'YouTube Music').replace(/ - Topic$/i, ''),
         durationSec: dur || 210,
         durationLabel: formatTime(dur || 210),
-        coverUrl: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+        coverUrl: `https://i.ytimg.com/vi/${vid}/mqdefault.jpg`,
       });
     }
     if (items.length === 0) throw new Error('Empty Piped response');
@@ -141,7 +141,7 @@ async function fetchInvidiousInstance(
         artist: (r.author || 'YouTube').replace(/ - Topic$/i, ''),
         durationSec: dur || 210,
         durationLabel: formatTime(dur || 210),
-        coverUrl: `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
+        coverUrl: `https://i.ytimg.com/vi/${r.videoId}/mqdefault.jpg`,
       });
     }
     if (items.length === 0) throw new Error('Empty Invidious response');

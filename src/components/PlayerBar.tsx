@@ -120,9 +120,10 @@ export function PlayerBar({
           <>
             <AlbumCover
               src={currentTrack.coverUrl}
+              videoIds={currentTrack.youtubeVideoIds}
               alt={currentTrack.title}
-              sizeClass="w-13.5 h-13.5"
-              roundedClass="rounded-md shadow-md"
+              size="sm"
+              className="w-13.5 h-13.5 rounded-md shadow-sm"
             />
 
             <div className="min-w-0">

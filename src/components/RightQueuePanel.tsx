@@ -1,7 +1,8 @@
 import { memo } from 'react';
-import { Link2, Pause, Play, Tv, X } from 'lucide-react';
+import { HardDrive, Pause, Play, Tv, X } from 'lucide-react';
 import type { AudioSourceKind, Track } from '../types/music';
 import { AlbumCover } from './AlbumCover';
+import { YouTubeLogo } from './Logos';
 import type { VideoDisplayMode } from './YouTubePlayerHost';
 
 interface RightQueuePanelProps {
@@ -31,14 +32,12 @@ export const RightQueuePanel = memo(function RightQueuePanel({
   onSelectArtist,
   onClose,
 }: RightQueuePanelProps) {
-  const sourceLabel =
-    activeAudioSource === 'local-idb' || activeAudioSource === 'local-folder'
-      ? 'Fichier MP3 local'
-      : 'Audio streaming';
+  const isLocal =
+    activeAudioSource === 'local-idb' || activeAudioSource === 'local-folder';
 
   return (
     <aside className="hidden xl:flex w-[306px] studio-panel rounded-xl flex-col shrink-0 overflow-hidden select-none anim-view">
-      {/* Header: Lecture en cours + × (exact image-1.png) */}
+      {/* Header: Lecture en cours + × */}
       <div className="flex items-center justify-between px-4 py-3.5">
         <h2 className="font-display font-bold text-sm text-[var(--text-main)] truncate">
           Lecture en cours
@@ -58,9 +57,12 @@ export const RightQueuePanel = memo(function RightQueuePanel({
           <div className="space-y-3">
             <AlbumCover
               src={currentTrack.coverUrl}
+              videoIds={currentTrack.youtubeVideoIds}
               alt={currentTrack.title}
-              sizeClass="w-full aspect-square"
-              roundedClass="rounded-lg shadow-lg"
+              size="lg"
+              className={`w-full rounded-lg shadow-md ${
+                isLocal ? 'aspect-square' : 'aspect-video'
+              }`}
             />
 
             <div className="space-y-0.5 pt-0.5">
@@ -80,9 +82,16 @@ export const RightQueuePanel = memo(function RightQueuePanel({
                   {currentTrack.artist}
                 </p>
               )}
-              <p className="text-xs text-[var(--text-muted)] truncate pt-0.5">
-                {currentTrack.album || currentTrack.genre} · {sourceLabel}
-              </p>
+              <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] pt-1">
+                {isLocal ? (
+                  <HardDrive className="w-3.5 h-3.5 text-[var(--accent)] shrink-0" />
+                ) : (
+                  <YouTubeLogo className="w-4 h-3 shrink-0" />
+                )}
+                <span className="truncate">
+                  {currentTrack.album || currentTrack.genre}
+                </span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 pt-1">
@@ -106,7 +115,7 @@ export const RightQueuePanel = memo(function RightQueuePanel({
                 onClick={() => onAttachYouTubeLink(currentTrack)}
                 className="flex-1 h-8 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-xs font-semibold text-[var(--text-main)] flex items-center justify-center gap-1.5 anim-press cursor-pointer"
               >
-                <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <YouTubeLogo className="w-4 h-3 shrink-0" />
                 <span>Lien YouTube</span>
               </button>
             </div>
@@ -117,8 +126,7 @@ export const RightQueuePanel = memo(function RightQueuePanel({
               Aucune lecture en cours
             </p>
             <p className="text-xs text-[var(--text-sub)]">
-              Sélectionnez un titre dans le catalogue ou lancez une radio pour
-              afficher la pochette ici.
+              Lancez un titre pour afficher sa pochette ou sa miniature ici.
             </p>
           </div>
         )}
@@ -147,18 +155,19 @@ export const RightQueuePanel = memo(function RightQueuePanel({
                       onClick={() => onPlayFromQueue(track)}
                       className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                     >
-                      <div className="relative w-10 h-10 rounded-[5px] overflow-hidden shrink-0">
+                      <div className="relative w-12 h-7 rounded-[4px] overflow-hidden shrink-0">
                         <AlbumCover
                           src={track.coverUrl}
+                          videoIds={track.youtubeVideoIds}
                           alt={track.title}
-                          sizeClass="w-10 h-10"
-                          roundedClass="rounded-[5px]"
+                          size="sm"
+                          className="w-full h-full rounded-[4px]"
                         />
                         <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                           {active ? (
-                            <Pause className="w-4 h-4 text-white fill-white" />
+                            <Pause className="w-3.5 h-3.5 text-white fill-white" />
                           ) : (
-                            <Play className="w-4 h-4 text-white fill-white" />
+                            <Play className="w-3.5 h-3.5 text-white fill-white" />
                           )}
                         </span>
                       </div>

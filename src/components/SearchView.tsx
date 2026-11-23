@@ -2,13 +2,10 @@ import { memo, useEffect, useMemo, useState } from 'react';
 import {
   Check,
   ExternalLink,
-  Link2,
   Loader2,
-  Mic2,
   Pause,
   Play,
   Plus,
-  Youtube,
 } from 'lucide-react';
 import type { Playlist, ResolvedYouTubeMeta, Track } from '../types/music';
 import {
@@ -23,6 +20,7 @@ import {
 } from '../utils/musicLogic';
 import { resolveYouTubeMetadataClient } from '../utils/webCatalogSearch';
 import { AlbumCover } from './AlbumCover';
+import { VideoClipBadge, YouTubeLogo } from './Logos';
 import type { YouTubeTrackDraft } from './YouTubeLinkModal';
 
 interface SearchViewProps {
@@ -90,6 +88,22 @@ export const SearchView = memo(function SearchView({
   const [liveTracksRaw, setLiveTracksRaw] = useState<Track[]>([]);
   const [liveSearching, setLiveSearching] = useState(false);
 
+  const suggestedArtistCards = useMemo(() => {
+    void catalogVersion;
+    return SUGGESTED_ARTISTS.map((name) => ({
+      name,
+      coverUrl: catalogStore.getArtistCoverUrl(name),
+    }));
+  }, [catalogVersion]);
+
+  const browseGenres = useMemo(() => {
+    void catalogVersion;
+    return CATALOG_GENRES.map((g) => ({
+      ...g,
+      coverUrl: catalogStore.getGenreSampleCovers(g.name, 1)[0],
+    }));
+  }, [catalogVersion]);
+
   useEffect(() => {
     if (!detectedYtVideoId) {
       setYtMeta(null);
@@ -149,7 +163,11 @@ export const SearchView = memo(function SearchView({
     if (!trimmed || detectedYtVideoId) {
       return {
         tracks: [] as Track[],
-        artists: [] as Array<{ name: string; count: number }>,
+        artists: [] as Array<{
+          name: string;
+          count: number;
+          coverUrl?: string;
+        }>,
       };
     }
     const res = catalogStore.queryCatalog(
@@ -160,7 +178,7 @@ export const SearchView = memo(function SearchView({
       },
       overlay
     );
-    const matchingArtists = catalogStore.queryArtists(trimmed, 6).items;
+    const matchingArtists = catalogStore.queryArtists(trimmed, 8).items;
     return {
       tracks: res.tracks,
       artists: matchingArtists,
@@ -196,6 +214,7 @@ export const SearchView = memo(function SearchView({
   ) => {
     const isCurrent = currentTrackId === track.id;
     const active = isCurrent && isPlaying;
+    const isYouTube = Boolean(track.youtubeVideoIds?.length);
     const inTargetPlaylist =
       targetPlaylistId === 'liked'
         ? track.liked
@@ -221,13 +240,16 @@ export const SearchView = memo(function SearchView({
                 ? `Mettre en pause ${track.title}`
                 : `Écouter ${track.title}`
             }
-            className="relative w-10 h-10 rounded-[5px] overflow-hidden shrink-0 cursor-pointer"
+            className={`relative overflow-hidden shrink-0 cursor-pointer rounded-[5px] ${
+              isYouTube ? 'w-16 h-9' : 'w-10 h-10'
+            }`}
           >
             <AlbumCover
               src={track.coverUrl}
+              videoIds={track.youtubeVideoIds}
               alt={track.title}
-              sizeClass="w-10 h-10"
-              roundedClass="rounded-[5px]"
+              size="sm"
+              className="w-full h-full rounded-[5px]"
             />
             <span
               className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${
@@ -266,6 +288,7 @@ export const SearchView = memo(function SearchView({
             </div>
 
             <div className="flex items-center gap-1.5 text-xs text-[var(--text-sub)] truncate mt-0.5">
+              {isYouTube && <VideoClipBadge />}
               <button
                 type="button"
                 onClick={() => onSelectArtist(track.artist)}
@@ -358,9 +381,10 @@ export const SearchView = memo(function SearchView({
               <div className="flex flex-col md:flex-row md:items-center gap-4">
                 <AlbumCover
                   src={ytMeta.coverUrl}
+                  videoIds={[ytMeta.videoId]}
                   alt={ytTitle || ytMeta.title}
-                  sizeClass="w-20 h-20"
-                  roundedClass="rounded-lg"
+                  size="lg"
+                  className="w-32 aspect-video rounded-lg shadow-sm"
                 />
 
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -444,31 +468,68 @@ export const SearchView = memo(function SearchView({
         )}
 
         {!query.trim() ? (
-          <div className="space-y-6">
+          <div className="space-y-7">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="font-display font-semibold text-sm text-[var(--text-sub)]">
-                  Suggestions
+                <h2 className="font-display font-bold text-base text-[var(--text-main)]">
+                  Artistes populaires
                 </h2>
                 <button
                   type="button"
                   onClick={onOpenYouTubeModal}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--text-sub)] hover:text-[var(--text-main)] cursor-pointer"
                 >
-                  <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <YouTubeLogo className="w-4 h-3" />
                   <span>Importer via lien YouTube</span>
                 </button>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {SUGGESTED_ARTISTS.map((label) => (
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                {suggestedArtistCards.map((artist) => (
                   <button
-                    key={label}
+                    key={artist.name}
                     type="button"
-                    onClick={() => onQueryChange(label)}
-                    className="px-4 py-2 rounded-full studio-card text-sm font-medium text-[var(--text-main)] cursor-pointer"
+                    onClick={() => onSelectArtist(artist.name)}
+                    className="group p-3 rounded-xl studio-card flex flex-col items-center text-center gap-2.5 cursor-pointer"
                   >
-                    {label}
+                    <AlbumCover
+                      src={artist.coverUrl}
+                      alt={artist.name}
+                      size="md"
+                      className="w-18 h-18 rounded-full shadow-sm transition-transform duration-200 group-hover:scale-105"
+                    />
+                    <span className="text-xs font-semibold text-[var(--text-main)] truncate w-full">
+                      {artist.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="font-display font-bold text-base text-[var(--text-main)]">
+                Parcourir tout
+              </h2>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2.5">
+                {browseGenres.map((g) => (
+                  <button
+                    key={g.name}
+                    type="button"
+                    onClick={() => onQueryChange(g.name)}
+                    className="group relative h-[80px] p-3.5 rounded-xl studio-card overflow-hidden text-left cursor-pointer"
+                  >
+                    <span className="relative z-10 block max-w-[68%] font-display font-bold text-sm text-[var(--text-main)] leading-snug">
+                      {g.name}
+                    </span>
+                    {g.coverUrl && (
+                      <AlbumCover
+                        src={g.coverUrl}
+                        alt={g.name}
+                        size="sm"
+                        className="w-16 h-16 rounded-lg shadow-md absolute -right-2 -bottom-2 rotate-[16deg] transition-transform duration-200 group-hover:scale-105 group-hover:rotate-[12deg]"
+                      />
+                    )}
                   </button>
                 ))}
               </div>
@@ -511,9 +572,14 @@ export const SearchView = memo(function SearchView({
                     key={a.name}
                     type="button"
                     onClick={() => onSelectArtist(a.name)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-main)] anim-press cursor-pointer"
+                    className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-full bg-[var(--bg-elevated)] hover:bg-[var(--bg-elevated-hover)] border border-[var(--border-subtle)] text-xs font-medium text-[var(--text-main)] anim-press cursor-pointer"
                   >
-                    <Mic2 className="w-3 h-3 text-[var(--text-sub)]" />
+                    <AlbumCover
+                      src={a.coverUrl}
+                      alt={a.name}
+                      size="sm"
+                      className="w-6 h-6 rounded-full"
+                    />
                     <span>{a.name}</span>
                   </button>
                 ))}
@@ -556,6 +622,7 @@ export const SearchView = memo(function SearchView({
               <div className="space-y-2">
                 <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2">
                   <div className="flex items-center gap-2">
+                    <YouTubeLogo className="w-4.5 h-3.5" />
                     <h2 className="text-xs font-semibold text-[var(--text-sub)]">
                       Autres résultats sur YouTube
                     </h2>
@@ -595,9 +662,9 @@ export const SearchView = memo(function SearchView({
                       href={getYouTubeSearchUrl(query)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full btn-accent text-xs font-semibold"
+                      className="inline-flex items-center gap-2 h-9 px-4 rounded-full btn-accent text-xs font-semibold"
                     >
-                      <Youtube className="w-4 h-4 fill-current" />
+                      <YouTubeLogo className="w-4.5 h-3.5" />
                       <span>Ouvrir sur YouTube</span>
                     </a>
                   </div>
